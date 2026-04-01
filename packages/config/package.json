@@ -1,0 +1,8 @@
+{
+  "name": "@unimble/config",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Shared configuration for Unimble",
+  "main": "./index.js",
+  "scripts": {}
+}
