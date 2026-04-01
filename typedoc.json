@@ -1,0 +1,15 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": ["./packages/shared/src", "./packages/ui/src"],
+  "out": "./docs/api",
+  "plugin": ["typedoc-plugin-markdown"],
+  "name": "Unimble API Documentation",
+  "readme": "none",
+  "excludePrivate": true,
+  "excludeProtected": true,
+  "excludeExternals": true,
+  "includeVersion": true,
+  "categorizeByGroup": true,
+  "sort": ["alphabetical"],
+  "gitRevision": "main"
+}
