@@ -1,0 +1,72 @@
+import { auth, clerkClient } from "@clerk/nextjs/server";
+import { NextResponse } from "next/server";
+
+type CompanySize = "1-10" | "11-50" | "51-200" | "201-500" | "500+";
+
+type UseCase = "DevRel" | "Content" | "GTM" | "Community" | "Other";
+
+type OnboardingPayload = {
+  fullName: string;
+  avatarUrl: string;
+  companyName: string;
+  companySize: CompanySize;
+  useCase: UseCase;
+  workspaceName: string;
+  inviteEmails: string;
+};
+
+export async function POST(req: Request) {
+  const { userId } = await auth();
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  let body: Partial<OnboardingPayload>;
+  try {
+    body = (await req.json()) as Partial<OnboardingPayload>;
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  const validCompanySizes: CompanySize[] = ["1-10", "11-50", "51-200", "201-500", "500+"];
+  const validUseCases: UseCase[] = ["DevRel", "Content", "GTM", "Community", "Other"];
+
+  const payload: OnboardingPayload = {
+    fullName: String(body.fullName ?? ""),
+    avatarUrl: String(body.avatarUrl ?? ""),
+    companyName: String(body.companyName ?? ""),
+    companySize: validCompanySizes.includes(body.companySize as CompanySize)
+      ? (body.companySize as CompanySize)
+      : "1-10",
+    useCase: validUseCases.includes(body.useCase as UseCase) ? (body.useCase as UseCase) : "DevRel",
+    workspaceName: String(body.workspaceName ?? ""),
+    inviteEmails: String(body.inviteEmails ?? ""),
+  };
+
+  const client = await clerkClient();
+
+  await client.users.updateUserMetadata(userId, {
+    publicMetadata: {
+      onboardingComplete: true,
+    },
+    privateMetadata: {
+      onboarding: {
+        ...payload,
+        completedAt: new Date().toISOString(),
+      },
+    },
+  });
+
+  const res = NextResponse.json({ ok: true });
+  res.cookies.set({
+    name: "__unimble_onboarding_complete",
+    value: "1",
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 365,
+  });
+
+  return res;
+}

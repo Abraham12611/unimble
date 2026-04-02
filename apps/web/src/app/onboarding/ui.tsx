@@ -42,6 +42,9 @@ export function OnboardingClient() {
     inviteEmails: "",
   });
 
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
   const step = steps[stepIndex];
   const progress = ((stepIndex + 1) / steps.length) * 100;
   const isFirst = stepIndex === 0;
@@ -63,11 +66,38 @@ export function OnboardingClient() {
     return steps.length - 1;
   })();
 
-  const canContinue = isStepComplete(step.key);
+  const canContinue = isStepComplete(step.key) && !saving;
 
-  const goNext = () => {
-    if (isLast) {
+  const persistAndFinish = async () => {
+    setSaving(true);
+    setSaveError(null);
+
+    try {
+      const res = await fetch("/api/onboarding", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(data),
+      });
+
+      if (!res.ok) {
+        setSaving(false);
+        setSaveError("We couldn't save your onboarding details. Please try again.");
+        return;
+      }
+
       router.push("/dashboard");
+      router.refresh();
+    } catch {
+      setSaving(false);
+      setSaveError("We couldn't save your onboarding details. Please try again.");
+    }
+  };
+
+  const goNext = async () => {
+    if (isLast) {
+      await persistAndFinish();
       return;
     }
 
@@ -143,7 +173,7 @@ export function OnboardingClient() {
                       done
                         ? "border-[rgba(34,197,94,0.4)] bg-[rgba(34,197,94,0.1)] text-[#22C55E]"
                         : active
-                          ? "border-[#3A82F6] bg-[rgba(59,130,246,0.12)] text-[#3B82F6]"
+                          ? "border-[#3B82F6] bg-[rgba(59,130,246,0.12)] text-[#3B82F6]"
                           : "border-[#222222] text-[#555555]"
                     }`}
                   >
@@ -167,11 +197,20 @@ export function OnboardingClient() {
             </p>
           </div>
 
+          {saveError && (
+            <div className="rounded-[10px] border border-[rgba(239,68,68,0.25)] bg-[rgba(239,68,68,0.08)] p-3 text-[12px] text-[#EF4444]">
+              {saveError}
+            </div>
+          )}
+
           {step.key === "profile" && (
             <div className="space-y-4">
               <div className="space-y-1">
-                <label className="text-[12px] text-[#666666]">Full name</label>
+                <label htmlFor="onboarding-full-name" className="text-[12px] text-[#666666]">
+                  Full name
+                </label>
                 <input
+                  id="onboarding-full-name"
                   value={data.fullName}
                   onChange={(e) => setData((d) => ({ ...d, fullName: e.target.value }))}
                   placeholder="e.g. Abraham Dahunsi"
@@ -179,8 +218,11 @@ export function OnboardingClient() {
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-[12px] text-[#666666]">Avatar URL (optional)</label>
+                <label htmlFor="onboarding-avatar-url" className="text-[12px] text-[#666666]">
+                  Avatar URL (optional)
+                </label>
                 <input
+                  id="onboarding-avatar-url"
                   value={data.avatarUrl}
                   onChange={(e) => setData((d) => ({ ...d, avatarUrl: e.target.value }))}
                   placeholder="https://..."
@@ -193,8 +235,11 @@ export function OnboardingClient() {
           {step.key === "company" && (
             <div className="space-y-4">
               <div className="space-y-1">
-                <label className="text-[12px] text-[#666666]">Company name</label>
+                <label htmlFor="onboarding-company-name" className="text-[12px] text-[#666666]">
+                  Company name
+                </label>
                 <input
+                  id="onboarding-company-name"
                   value={data.companyName}
                   onChange={(e) => setData((d) => ({ ...d, companyName: e.target.value }))}
                   placeholder="e.g. Unimble"
@@ -202,8 +247,11 @@ export function OnboardingClient() {
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-[12px] text-[#666666]">Company size</label>
+                <label htmlFor="onboarding-company-size" className="text-[12px] text-[#666666]">
+                  Company size
+                </label>
                 <select
+                  id="onboarding-company-size"
                   value={data.companySize}
                   onChange={(e) =>
                     setData((d) => ({ ...d, companySize: e.target.value as CompanySize }))
@@ -252,8 +300,11 @@ export function OnboardingClient() {
           {step.key === "workspace" && (
             <div className="space-y-4">
               <div className="space-y-1">
-                <label className="text-[12px] text-[#666666]">Workspace name</label>
+                <label htmlFor="onboarding-workspace-name" className="text-[12px] text-[#666666]">
+                  Workspace name
+                </label>
                 <input
+                  id="onboarding-workspace-name"
                   value={data.workspaceName}
                   onChange={(e) => setData((d) => ({ ...d, workspaceName: e.target.value }))}
                   placeholder="e.g. Unimble HQ"
@@ -271,8 +322,11 @@ export function OnboardingClient() {
           {step.key === "invite" && (
             <div className="space-y-4">
               <div className="space-y-1">
-                <label className="text-[12px] text-[#666666]">Invite emails (optional)</label>
+                <label htmlFor="onboarding-invite-emails" className="text-[12px] text-[#666666]">
+                  Invite emails (optional)
+                </label>
                 <textarea
+                  id="onboarding-invite-emails"
                   value={data.inviteEmails}
                   onChange={(e) => setData((d) => ({ ...d, inviteEmails: e.target.value }))}
                   placeholder="name@company.com\nother@company.com"
@@ -294,7 +348,7 @@ export function OnboardingClient() {
           <button
             type="button"
             onClick={goBack}
-            disabled={isFirst}
+            disabled={isFirst || saving}
             className={`h-9 rounded-[10px] border px-3 text-[13px] font-medium transition-colors ${
               isFirst
                 ? "cursor-not-allowed border-[#222222] text-[#555555]"
@@ -308,7 +362,12 @@ export function OnboardingClient() {
             <button
               type="button"
               onClick={skipStep}
-              className="h-9 rounded-[10px] border border-[#2A2A2A] px-3 text-[13px] font-medium text-[#F0F0F0] transition-colors hover:bg-[#111111]"
+              disabled={saving}
+              className={`h-9 rounded-[10px] border px-3 text-[13px] font-medium transition-colors ${
+                saving
+                  ? "cursor-not-allowed border-[#222222] text-[#555555]"
+                  : "border-[#2A2A2A] text-[#F0F0F0] hover:bg-[#111111]"
+              }`}
             >
               Skip
             </button>
@@ -325,7 +384,7 @@ export function OnboardingClient() {
               : "cursor-not-allowed border-[#222222] bg-[#111111] text-[#555555]"
           }`}
         >
-          {isLast ? "Finish" : "Continue"}
+          {saving ? "Saving..." : isLast ? "Finish" : "Continue"}
         </button>
       </div>
     </div>
