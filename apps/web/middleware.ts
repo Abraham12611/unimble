@@ -9,7 +9,10 @@ export default clerkMiddleware(async (auth, req) => {
 
   if (userId && isAuthRoute(req)) {
     const redirectUrl = req.nextUrl.searchParams.get("redirect_url");
-    const safePath = redirectUrl?.startsWith("/") ? redirectUrl : "/dashboard";
+    const safePath =
+      redirectUrl && redirectUrl.startsWith("/") && !redirectUrl.startsWith("//")
+        ? redirectUrl
+        : "/dashboard";
 
     return NextResponse.redirect(new URL(safePath, req.url));
   }
