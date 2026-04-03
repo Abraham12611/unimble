@@ -12,7 +12,18 @@ export default defineSchema({
     role: v.optional(v.string()),
     onboardingComplete: v.optional(v.boolean()),
     defaultWorkspaceId: v.optional(v.id("workspaces")),
-    onboarding: v.optional(v.any()),
+    onboarding: v.optional(
+      v.object({
+        fullName: v.optional(v.string()),
+        avatarUrl: v.optional(v.string()),
+        companyName: v.optional(v.string()),
+        companySize: v.optional(v.string()),
+        useCase: v.optional(v.string()),
+        workspaceName: v.optional(v.string()),
+        inviteEmails: v.optional(v.string()),
+        completedAt: v.optional(v.number()),
+      })
+    ),
     createdAt: v.number(),
     updatedAt: v.number(),
   })

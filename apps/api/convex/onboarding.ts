@@ -1,4 +1,5 @@
-import { mutationGeneric } from "convex/server";
+import type { Id } from "./_generated/dataModel";
+import { mutation } from "./_generated/server";
 import { v } from "convex/values";
 
 function slugify(input: string) {
@@ -24,7 +25,7 @@ function isLikelyEmail(input: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input);
 }
 
-export const completeOnboarding = mutationGeneric({
+export const completeOnboarding = mutation({
   args: {
     fullName: v.string(),
     avatarUrl: v.string(),
@@ -67,7 +68,7 @@ export const completeOnboarding = mutationGeneric({
       completedAt: now,
     };
 
-    let userId;
+    let userId: Id<"users">;
     if (!existingUser) {
       userId = await ctx.db.insert("users", {
         clerkId,
@@ -104,14 +105,23 @@ export const completeOnboarding = mutationGeneric({
     const slugBase = slugify(rawWorkspaceName);
     let slug = slugBase;
 
+    let slugFound = false;
     for (let i = 0; i < 25; i += 1) {
       const existingWorkspace = await ctx.db
         .query("workspaces")
         .withIndex("by_slug", (q) => q.eq("slug", slug))
         .unique();
 
-      if (!existingWorkspace) break;
+      if (!existingWorkspace) {
+        slugFound = true;
+        break;
+      }
+
       slug = `${slugBase}-${i + 2}`;
+    }
+
+    if (!slugFound) {
+      throw new Error("Could not generate a unique workspace slug after 25 attempts");
     }
 
     const workspaceId = await ctx.db.insert("workspaces", {
@@ -130,8 +140,9 @@ export const completeOnboarding = mutationGeneric({
 
     const existingMember = await ctx.db
       .query("workspaceMembers")
-      .withIndex("by_workspace", (q) => q.eq("workspaceId", workspaceId))
-      .filter((q) => q.eq(q.field("userId"), userId))
+      .withIndex("by_workspace_and_user", (q) =>
+        q.eq("workspaceId", workspaceId).eq("userId", userId)
+      )
       .unique();
 
     if (!existingMember) {
@@ -150,8 +161,9 @@ export const completeOnboarding = mutationGeneric({
     for (const inviteEmail of invites) {
       const existingInvite = await ctx.db
         .query("workspaceInvites")
-        .withIndex("by_workspace", (q) => q.eq("workspaceId", workspaceId))
-        .filter((q) => q.eq(q.field("email"), inviteEmail))
+        .withIndex("by_workspace_and_email", (q) =>
+          q.eq("workspaceId", workspaceId).eq("email", inviteEmail)
+        )
         .unique();
 
       if (existingInvite) continue;
