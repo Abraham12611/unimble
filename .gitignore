@@ -8,6 +8,8 @@ dist/
 out/
 build/
 .turbo/
+.agents/
+.windsurf/
 
 # Environment files
 .env
@@ -38,8 +40,19 @@ coverage/
 
 # Convex
 .convex/
+/convex/
+apps/api/convex/_generated/ai/
+
+# Clerk
+/apps/web/.clerk/
 
 # Misc
 *.tsbuildinfo
 .eslintcache
 .prettiercache
+skills-lock.json
+apps/api/skills-lock.json
+apps/api/.gitignore
+
+AGENTS.md
+CLAUDE.md

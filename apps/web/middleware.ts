@@ -6,11 +6,25 @@ const isAuthRoute = createRouteMatcher(["/sign-in(.*)", "/sign-up(.*)"]);
 const isOnboardingRoute = createRouteMatcher(["/onboarding(.*)"]);
 const isApiRoute = createRouteMatcher(["/api(.*)", "/trpc(.*)"]);
 
+type OnboardingClaims = {
+  publicMetadata?: {
+    onboardingComplete?: boolean;
+    onboarding_complete?: boolean;
+  };
+  public_metadata?: {
+    onboardingComplete?: boolean;
+    onboarding_complete?: boolean;
+  };
+  metadata?: {
+    onboardingComplete?: boolean;
+  };
+};
+
 export default clerkMiddleware(async (auth, req) => {
   const session = await auth();
   const { userId, sessionClaims } = session;
 
-  const claims: any = sessionClaims as any;
+  const claims = sessionClaims as OnboardingClaims | null | undefined;
   const onboardingCookie = req.cookies.get("__unimble_onboarding_complete")?.value;
   const onboardingComplete = onboardingCookie
     ? onboardingCookie === "1"
