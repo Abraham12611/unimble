@@ -26,15 +26,15 @@ export default clerkMiddleware(async (auth, req) => {
 
   const claims = sessionClaims as OnboardingClaims | null | undefined;
   const onboardingCookie = req.cookies.get("__unimble_onboarding_complete")?.value;
-  const onboardingComplete = onboardingCookie
-    ? onboardingCookie === "1"
-    : Boolean(
-        claims?.publicMetadata?.onboardingComplete ??
-        claims?.public_metadata?.onboardingComplete ??
-        claims?.metadata?.onboardingComplete ??
-        claims?.public_metadata?.onboarding_complete ??
-        claims?.publicMetadata?.onboarding_complete
-      );
+  const claimComplete =
+    claims?.publicMetadata?.onboardingComplete ??
+    claims?.public_metadata?.onboardingComplete ??
+    claims?.metadata?.onboardingComplete ??
+    claims?.public_metadata?.onboarding_complete ??
+    claims?.publicMetadata?.onboarding_complete;
+
+  const onboardingComplete =
+    claimComplete != null ? Boolean(claimComplete) : onboardingCookie === "1";
 
   if (userId && isAuthRoute(req)) {
     const redirectUrl = req.nextUrl.searchParams.get("redirect_url");
