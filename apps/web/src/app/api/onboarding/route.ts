@@ -71,20 +71,25 @@ export async function POST(req: Request) {
 
   const client = await clerkClient();
 
-  await client.users.updateUserMetadata(userId, {
-    publicMetadata: {
-      onboardingComplete: true,
-    },
-    privateMetadata: {
-      onboarding: {
-        ...payload,
-        completedAt: new Date().toISOString(),
-        workspaceId,
+  let clerkMetadataUpdated = true;
+  try {
+    await client.users.updateUserMetadata(userId, {
+      publicMetadata: {
+        onboardingComplete: true,
       },
-    },
-  });
+      privateMetadata: {
+        onboarding: {
+          ...payload,
+          completedAt: new Date().toISOString(),
+          workspaceId,
+        },
+      },
+    });
+  } catch {
+    clerkMetadataUpdated = false;
+  }
 
-  const res = NextResponse.json({ ok: true });
+  const res = NextResponse.json({ ok: true, clerkMetadataUpdated });
   res.cookies.set({
     name: "__unimble_onboarding_complete",
     value: "1",
