@@ -1,4 +1,6 @@
 import { auth, clerkClient } from "@clerk/nextjs/server";
+import { ConvexHttpClient } from "convex/browser";
+import { makeFunctionReference } from "convex/server";
 import { NextResponse } from "next/server";
 
 type CompanySize = "1-10" | "11-50" | "51-200" | "201-500" | "500+";
@@ -16,7 +18,7 @@ type OnboardingPayload = {
 };
 
 export async function POST(req: Request) {
-  const { userId } = await auth();
+  const { userId, getToken } = await auth();
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -43,6 +45,30 @@ export async function POST(req: Request) {
     inviteEmails: String(body.inviteEmails ?? ""),
   };
 
+  const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL ?? process.env.CONVEX_URL;
+  if (!convexUrl) {
+    return NextResponse.json({ error: "Convex is not configured" }, { status: 500 });
+  }
+
+  const token = await getToken({ template: "convex" });
+  if (!token) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const convex = new ConvexHttpClient(convexUrl);
+  convex.setAuth(token);
+
+  let workspaceId: string;
+  try {
+    const completeOnboarding = makeFunctionReference<"mutation">("onboarding:completeOnboarding");
+    const result = (await convex.mutation(completeOnboarding, payload)) as {
+      workspaceId: string;
+    };
+    workspaceId = result.workspaceId;
+  } catch {
+    return NextResponse.json({ error: "Failed to save onboarding" }, { status: 500 });
+  }
+
   const client = await clerkClient();
 
   await client.users.updateUserMetadata(userId, {
@@ -53,6 +79,7 @@ export async function POST(req: Request) {
       onboarding: {
         ...payload,
         completedAt: new Date().toISOString(),
+        workspaceId,
       },
     },
   });

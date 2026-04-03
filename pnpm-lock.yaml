@@ -7,6 +7,10 @@ settings:
 importers:
 
   .:
+    dependencies:
+      convex:
+        specifier: ^1.34.1
+        version: 1.34.1(react@19.2.4)
     devDependencies:
       '@commitlint/cli':
         specifier: ^20.5.0
@@ -48,6 +52,9 @@ importers:
         specifier: ^1.34.1
         version: 1.34.1(react@19.2.4)
     devDependencies:
+      '@types/node':
+        specifier: ^20
+        version: 20.19.37
       typescript:
         specifier: ^5
         version: 5.9.3
