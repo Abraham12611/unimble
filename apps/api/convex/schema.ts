@@ -6,8 +6,10 @@ export default defineSchema({
   users: defineTable({
     clerkId: v.string(),
     email: v.string(),
+    name: v.optional(v.string()),
     firstName: v.optional(v.string()),
     lastName: v.optional(v.string()),
+    avatarUrl: v.optional(v.string()),
     imageUrl: v.optional(v.string()),
     role: v.optional(v.string()),
     onboardingComplete: v.optional(v.boolean()),
