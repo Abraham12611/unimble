@@ -5,6 +5,7 @@ const isPublicRoute = createRouteMatcher(["/", "/sign-in(.*)", "/sign-up(.*)"]);
 const isAuthRoute = createRouteMatcher(["/sign-in(.*)", "/sign-up(.*)"]);
 const isOnboardingRoute = createRouteMatcher(["/onboarding(.*)"]);
 const isApiRoute = createRouteMatcher(["/api(.*)", "/trpc(.*)"]);
+const isPasswordResetRoute = createRouteMatcher(["/forgot-password(.*)", "/reset-password(.*)"]);
 
 type OnboardingClaims = {
   publicMetadata?: {
@@ -51,7 +52,8 @@ export default clerkMiddleware(async (auth, req) => {
     !onboardingComplete &&
     !isOnboardingRoute(req) &&
     !isAuthRoute(req) &&
-    !isApiRoute(req)
+    !isApiRoute(req) &&
+    !isPasswordResetRoute(req)
   ) {
     return NextResponse.redirect(new URL("/onboarding", req.url));
   }
@@ -60,7 +62,7 @@ export default clerkMiddleware(async (auth, req) => {
     return NextResponse.redirect(new URL("/dashboard", req.url));
   }
 
-  if (!userId && !isPublicRoute(req)) {
+  if (!userId && !isPublicRoute(req) && !isPasswordResetRoute(req)) {
     const signInUrl = new URL("/sign-in", req.url);
     signInUrl.searchParams.set("redirect_url", `${req.nextUrl.pathname}${req.nextUrl.search}`);
 
