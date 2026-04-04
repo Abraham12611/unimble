@@ -1,13 +1,18 @@
 import { redirect } from "next/navigation";
 
-export default function Page({
+export default async function Page({
   params,
 }: {
-  params: {
-    rest?: string[];
-  };
+  params:
+    | {
+        rest?: string[];
+      }
+    | Promise<{
+        rest?: string[];
+      }>;
 }) {
-  const suffix = params.rest?.join("/") ?? "";
+  const { rest } = await params;
+  const suffix = rest?.join("/") ?? "";
   const target = suffix ? `/settings/profile/security/${suffix}` : "/settings/profile/security";
 
   redirect(target);
