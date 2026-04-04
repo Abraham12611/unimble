@@ -9,11 +9,16 @@ export async function GET() {
 
   const client = await clerkClient();
 
-  const response = await client.sessions.getSessionList({
-    userId,
-    limit: 50,
-    offset: 0,
-  });
+  let response: Awaited<ReturnType<(typeof client.sessions)["getSessionList"]>>;
+  try {
+    response = await client.sessions.getSessionList({
+      userId,
+      limit: 50,
+      offset: 0,
+    });
+  } catch {
+    return NextResponse.json({ error: "Clerk API error" }, { status: 502 });
+  }
 
   const sessions = response.data.map((s) => ({
     id: s.id,

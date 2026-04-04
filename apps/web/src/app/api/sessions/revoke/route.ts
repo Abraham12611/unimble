@@ -24,12 +24,33 @@ export async function POST(req: Request) {
   }
 
   const client = await clerkClient();
-  const session = await client.sessions.getSession(sessionId);
+
+  let session: Awaited<ReturnType<(typeof client.sessions)["getSession"]>>;
+  try {
+    session = await client.sessions.getSession(sessionId);
+  } catch (err) {
+    const status =
+      typeof err === "object" && err !== null && "status" in err
+        ? (err as { status?: unknown }).status
+        : undefined;
+
+    if (typeof status === "number" && status === 404) {
+      return NextResponse.json({ error: "Session not found" }, { status: 404 });
+    }
+
+    return NextResponse.json({ error: "Clerk API error" }, { status: 502 });
+  }
+
   if (session.userId !== userId) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const revoked = await client.sessions.revokeSession(sessionId);
+  let revoked: Awaited<ReturnType<(typeof client.sessions)["revokeSession"]>>;
+  try {
+    revoked = await client.sessions.revokeSession(sessionId);
+  } catch {
+    return NextResponse.json({ error: "Clerk API error" }, { status: 502 });
+  }
 
   return NextResponse.json({ ok: true, revoked });
 }

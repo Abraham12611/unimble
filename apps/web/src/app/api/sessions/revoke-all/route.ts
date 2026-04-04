@@ -8,18 +8,27 @@ export async function POST() {
   }
 
   const client = await clerkClient();
-  const response = await client.sessions.getSessionList({
-    userId,
-    status: "active",
-    limit: 500,
-    offset: 0,
-  });
+  let response: Awaited<ReturnType<(typeof client.sessions)["getSessionList"]>>;
+  try {
+    response = await client.sessions.getSessionList({
+      userId,
+      status: "active",
+      limit: 500,
+      offset: 0,
+    });
+  } catch {
+    return NextResponse.json({ error: "Clerk API error" }, { status: 502 });
+  }
 
   const sessionIds = response.data
     .map((s) => s.id)
     .filter((id) => (sessionId ? id !== sessionId : true));
 
-  await Promise.all(sessionIds.map((id) => client.sessions.revokeSession(id)));
+  try {
+    await Promise.all(sessionIds.map((id) => client.sessions.revokeSession(id)));
+  } catch {
+    return NextResponse.json({ error: "Clerk API error" }, { status: 502 });
+  }
 
   return NextResponse.json({ ok: true, revokedCount: sessionIds.length });
 }

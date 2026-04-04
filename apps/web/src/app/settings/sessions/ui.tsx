@@ -19,7 +19,7 @@ type SessionsResponse = {
 };
 
 function formatUnixSeconds(value: number | null): string {
-  if (!value) return "—";
+  if (value == null) return "—";
   return new Date(value * 1000).toLocaleString();
 }
 
