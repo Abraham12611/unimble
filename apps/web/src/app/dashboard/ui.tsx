@@ -15,7 +15,7 @@ export function DashboardClient() {
           >
             Sessions
           </Link>
-          <UserButton />
+          <UserButton userProfileMode="navigation" userProfileUrl="/settings/profile" />
         </div>
       </div>
     </div>
