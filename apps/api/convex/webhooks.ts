@@ -21,11 +21,7 @@ function buildUserPayload(data: any) {
 
   const firstName = data?.first_name ? String(data.first_name) : undefined;
   const lastName = data?.last_name ? String(data.last_name) : undefined;
-  const name = data?.full_name
-    ? String(data.full_name)
-    : firstName || lastName
-      ? [firstName, lastName].filter(Boolean).join(" ")
-      : undefined;
+  const name = firstName || lastName ? [firstName, lastName].filter(Boolean).join(" ") : undefined;
 
   const imageUrl = data?.image_url ? String(data.image_url) : undefined;
   const avatarUrl = imageUrl;

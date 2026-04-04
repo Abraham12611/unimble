@@ -104,11 +104,11 @@ export const getUserByClerkId = internalQuery({
 
 export const updateUser = mutation({
   args: {
-    name: v.optional(v.string()),
-    firstName: v.optional(v.string()),
-    lastName: v.optional(v.string()),
-    avatarUrl: v.optional(v.string()),
-    imageUrl: v.optional(v.string()),
+    name: v.optional(v.union(v.string(), v.null())),
+    firstName: v.optional(v.union(v.string(), v.null())),
+    lastName: v.optional(v.union(v.string(), v.null())),
+    avatarUrl: v.optional(v.union(v.string(), v.null())),
+    imageUrl: v.optional(v.union(v.string(), v.null())),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -127,14 +127,19 @@ export const updateUser = mutation({
     }
 
     const now = Date.now();
-    await ctx.db.patch(user._id, {
-      name: args.name ?? user.name,
-      firstName: args.firstName ?? user.firstName,
-      lastName: args.lastName ?? user.lastName,
-      avatarUrl: args.avatarUrl ?? user.avatarUrl,
-      imageUrl: args.imageUrl ?? user.imageUrl,
-      updatedAt: now,
-    });
+    const patch: Record<string, unknown> = { updatedAt: now };
+
+    if (args.name !== undefined) patch.name = args.name === null ? undefined : args.name;
+    if (args.firstName !== undefined)
+      patch.firstName = args.firstName === null ? undefined : args.firstName;
+    if (args.lastName !== undefined)
+      patch.lastName = args.lastName === null ? undefined : args.lastName;
+    if (args.avatarUrl !== undefined)
+      patch.avatarUrl = args.avatarUrl === null ? undefined : args.avatarUrl;
+    if (args.imageUrl !== undefined)
+      patch.imageUrl = args.imageUrl === null ? undefined : args.imageUrl;
+
+    await ctx.db.patch(user._id, patch);
 
     return user._id;
   },
