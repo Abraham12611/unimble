@@ -27,7 +27,12 @@ export async function requireCreator() {
   convex.setAuth(token);
 
   const getCurrentUser = makeFunctionReference<"query">("users:getCurrentUser");
-  const currentUser = (await convex.query(getCurrentUser, {})) as CurrentUser;
+  let currentUser: CurrentUser;
+  try {
+    currentUser = (await convex.query(getCurrentUser, {})) as CurrentUser;
+  } catch {
+    redirect("/sign-in");
+  }
 
   if (currentUser?.role !== "creator") {
     redirect("/unauthorized");

@@ -9,11 +9,31 @@ type UserRow = {
   createdAt: number;
 };
 
-export default async function Page() {
+type ListUsersPage = {
+  page: UserRow[];
+  continueCursor: string | null;
+  isDone: boolean;
+};
+
+export default async function Page({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { convex } = await requireCreator();
 
+  const params = (await searchParams) ?? {};
+  const cursorParam = params.cursor;
+  const cursor = Array.isArray(cursorParam) ? (cursorParam[0] ?? null) : (cursorParam ?? null);
+
   const listUsers = makeFunctionReference<"query">("users:listUsers");
-  const users = (await convex.query(listUsers, {})) as UserRow[];
+  const results = (await convex.query(listUsers, {
+    paginationOpts: {
+      cursor,
+      numItems: 100,
+    },
+  })) as ListUsersPage;
+  const users = results.page;
 
   return (
     <div className="space-y-4">
@@ -37,6 +57,17 @@ export default async function Page() {
             </div>
           ))}
         </div>
+
+        {!results.isDone && results.continueCursor ? (
+          <div className="border-t border-[#222222] px-4 py-3 text-sm">
+            <a
+              className="text-[#A0A0A0] hover:text-[#F0F0F0]"
+              href={`/creator?cursor=${encodeURIComponent(results.continueCursor)}`}
+            >
+              Next page
+            </a>
+          </div>
+        ) : null}
       </div>
     </div>
   );

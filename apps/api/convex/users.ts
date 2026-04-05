@@ -1,5 +1,6 @@
-import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
+import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
+import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import {
   derivePlatformRole,
   normalizePlatformRole,
@@ -101,8 +102,10 @@ export const getCurrentUser = query({
 });
 
 export const listUsers = query({
-  args: {},
-  handler: async (ctx) => {
+  args: {
+    paginationOpts: paginationOptsValidator,
+  },
+  handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) {
       throw new Error("Not authenticated");
@@ -121,7 +124,7 @@ export const listUsers = query({
     const role = normalizePlatformRole(currentUser.role);
     requirePermission(role, "platform:admin");
 
-    return await ctx.db.query("users").take(100);
+    return await ctx.db.query("users").order("desc").paginate(args.paginationOpts);
   },
 });
 
@@ -212,6 +215,10 @@ export const setPlatformRole = mutation({
 
     const role = normalizePlatformRole(currentUser.role);
     requirePermission(role, "platform:admin");
+
+    if (args.userId === currentUser._id && args.role !== "creator") {
+      throw new Error("Cannot demote your own creator account");
+    }
 
     const now = Date.now();
     await ctx.db.patch(args.userId, {
