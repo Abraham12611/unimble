@@ -100,6 +100,31 @@ export const getCurrentUser = query({
   },
 });
 
+export const listUsers = query({
+  args: {},
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    const clerkId = identity.subject;
+    const currentUser = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", clerkId))
+      .unique();
+
+    if (!currentUser) {
+      throw new Error("User not found");
+    }
+
+    const role = normalizePlatformRole(currentUser.role);
+    requirePermission(role, "platform:admin");
+
+    return await ctx.db.query("users").take(100);
+  },
+});
+
 export const getUserById = internalQuery({
   args: {
     id: v.id("users"),
