@@ -1,5 +1,11 @@
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import {
+  derivePlatformRole,
+  normalizePlatformRole,
+  requirePermission,
+  type PlatformRole,
+} from "./rbac";
 
 export const upsertFromClerk = internalMutation({
   args: {
@@ -20,6 +26,11 @@ export const upsertFromClerk = internalMutation({
       .unique();
 
     if (!existing) {
+      const platformRole = derivePlatformRole({
+        clerkId: args.clerkId,
+        email: args.email,
+        existingRole: undefined,
+      });
       return await ctx.db.insert("users", {
         clerkId: args.clerkId,
         email: args.email,
@@ -28,10 +39,17 @@ export const upsertFromClerk = internalMutation({
         lastName: args.lastName,
         avatarUrl: args.avatarUrl,
         imageUrl: args.imageUrl,
+        role: platformRole,
         createdAt: now,
         updatedAt: now,
       });
     }
+
+    const platformRole = derivePlatformRole({
+      clerkId: args.clerkId,
+      email: args.email,
+      existingRole: existing.role,
+    });
 
     await ctx.db.patch(existing._id, {
       email: args.email,
@@ -40,6 +58,7 @@ export const upsertFromClerk = internalMutation({
       lastName: args.lastName ?? existing.lastName,
       avatarUrl: args.avatarUrl ?? existing.avatarUrl,
       imageUrl: args.imageUrl ?? existing.imageUrl,
+      role: platformRole,
       updatedAt: now,
     });
 
@@ -142,5 +161,39 @@ export const updateUser = mutation({
     await ctx.db.patch(user._id, patch);
 
     return user._id;
+  },
+});
+
+export const setPlatformRole = mutation({
+  args: {
+    userId: v.id("users"),
+    role: v.union(v.literal("user"), v.literal("creator")),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    const clerkId = identity.subject;
+    const currentUser = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", clerkId))
+      .unique();
+
+    if (!currentUser) {
+      throw new Error("User not found");
+    }
+
+    const role = normalizePlatformRole(currentUser.role);
+    requirePermission(role, "platform:admin");
+
+    const now = Date.now();
+    await ctx.db.patch(args.userId, {
+      role: args.role as PlatformRole,
+      updatedAt: now,
+    });
+
+    return args.userId;
   },
 });
