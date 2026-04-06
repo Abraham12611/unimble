@@ -26,15 +26,18 @@ function isLikelyEmail(input: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input);
 }
 
-function sanitizeHttpsUrl(input: string) {
-  const raw = String(input ?? "").trim();
-  if (!raw) return "";
+function parseHttpsUrlOrThrow(rawInput: string) {
+  const raw = String(rawInput ?? "").trim();
+  if (!raw) return undefined;
 
   try {
     const u = new URL(raw);
-    return u.protocol === "https:" ? raw : "";
+    if (u.protocol !== "https:") {
+      throw new Error("avatarUrl must use https");
+    }
+    return raw;
   } catch {
-    return "";
+    throw new Error("avatarUrl must be a valid https URL");
   }
 }
 
@@ -66,7 +69,11 @@ export const completeOnboarding = mutation({
     const fullName = args.fullName.trim();
     const companyName = args.companyName.trim();
     const workspaceName = args.workspaceName.trim();
-    const avatarUrl = sanitizeHttpsUrl(args.avatarUrl);
+    const avatarUrl = parseHttpsUrlOrThrow(args.avatarUrl);
+
+    if (avatarUrl && avatarUrl.length > 2_048) {
+      throw new Error("avatarUrl is too long");
+    }
 
     if (!fullName) {
       throw new Error("fullName is required");
@@ -118,13 +125,13 @@ export const completeOnboarding = mutation({
 
     const onboardingPayload = {
       fullName,
-      avatarUrl,
       companyName,
       companySize: args.companySize,
       useCase: args.useCase,
       workspaceName,
       inviteEmails: args.inviteEmails,
       completedAt: now,
+      ...(avatarUrl ? { avatarUrl } : {}),
     };
 
     let userId: Id<"users">;
@@ -135,8 +142,8 @@ export const completeOnboarding = mutation({
         email,
         firstName: firstName || undefined,
         lastName,
-        avatarUrl: avatarUrl || undefined,
-        imageUrl: avatarUrl || identity.pictureUrl || undefined,
+        ...(avatarUrl ? { avatarUrl } : {}),
+        imageUrl: avatarUrl ?? identity.pictureUrl ?? undefined,
         role: platformRole,
         onboardingComplete: false,
         onboarding: onboardingPayload,
@@ -155,8 +162,8 @@ export const completeOnboarding = mutation({
         email,
         firstName: firstName || existingUser.firstName,
         lastName: lastName ?? existingUser.lastName,
-        avatarUrl: avatarUrl || existingUser.avatarUrl,
-        imageUrl: avatarUrl || existingUser.imageUrl,
+        ...(avatarUrl ? { avatarUrl } : {}),
+        imageUrl: avatarUrl ?? existingUser.imageUrl ?? identity.pictureUrl ?? undefined,
         role: platformRole,
         onboarding: onboardingPayload,
         updatedAt: now,
