@@ -24,11 +24,11 @@ export async function POST() {
     .map((s) => s.id)
     .filter((id) => (sessionId ? id !== sessionId : true));
 
-  try {
-    await Promise.all(sessionIds.map((id) => client.sessions.revokeSession(id)));
-  } catch {
-    return NextResponse.json({ error: "Clerk API error" }, { status: 502 });
-  }
+  const results = await Promise.allSettled(
+    sessionIds.map((id) => client.sessions.revokeSession(id))
+  );
+  const revokedCount = results.filter((r) => r.status === "fulfilled").length;
+  const failedCount = results.filter((r) => r.status === "rejected").length;
 
-  return NextResponse.json({ ok: true, revokedCount: sessionIds.length });
+  return NextResponse.json({ ok: true, revokedCount, failedCount });
 }

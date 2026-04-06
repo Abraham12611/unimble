@@ -34,16 +34,24 @@ export async function POST(req: Request) {
   const validUseCases: UseCase[] = ["DevRel", "Content", "GTM", "Community", "Other"];
 
   const payload: OnboardingPayload = {
-    fullName: String(body.fullName ?? ""),
-    avatarUrl: String(body.avatarUrl ?? ""),
-    companyName: String(body.companyName ?? ""),
+    fullName: String(body.fullName ?? "").trim(),
+    avatarUrl: String(body.avatarUrl ?? "").trim(),
+    companyName: String(body.companyName ?? "").trim(),
     companySize: validCompanySizes.includes(body.companySize as CompanySize)
       ? (body.companySize as CompanySize)
       : "1-10",
     useCase: validUseCases.includes(body.useCase as UseCase) ? (body.useCase as UseCase) : "DevRel",
-    workspaceName: String(body.workspaceName ?? ""),
+    workspaceName: String(body.workspaceName ?? "").trim(),
     inviteEmails: String(body.inviteEmails ?? ""),
   };
+
+  if (!payload.fullName) {
+    return NextResponse.json({ error: "fullName is required" }, { status: 400 });
+  }
+
+  if (!payload.workspaceName) {
+    return NextResponse.json({ error: "workspaceName is required" }, { status: 400 });
+  }
 
   const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL ?? process.env.CONVEX_URL;
   if (!convexUrl) {
@@ -71,7 +79,6 @@ export async function POST(req: Request) {
 
   const client = await clerkClient();
 
-  let clerkMetadataUpdated = true;
   try {
     await client.users.updateUserMetadata(userId, {
       publicMetadata: {
@@ -86,10 +93,15 @@ export async function POST(req: Request) {
       },
     });
   } catch {
-    clerkMetadataUpdated = false;
+    return NextResponse.json(
+      {
+        error: "Onboarding saved but session could not be updated. Please refresh and try again.",
+      },
+      { status: 500 }
+    );
   }
 
-  const res = NextResponse.json({ ok: true, clerkMetadataUpdated });
+  const res = NextResponse.json({ ok: true });
   res.cookies.set({
     name: "__unimble_onboarding_complete",
     value: "1",
