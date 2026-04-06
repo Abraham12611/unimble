@@ -1,5 +1,6 @@
 import js from "@eslint/js";
 import globals from "globals";
+import tseslint from "typescript-eslint";
 
 export default [
   {
@@ -29,4 +30,5 @@ export default [
       "no-unused-vars": "warn",
     },
   },
+  ...tseslint.configs.recommended,
 ];
