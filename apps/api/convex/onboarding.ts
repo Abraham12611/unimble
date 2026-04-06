@@ -25,6 +25,18 @@ function isLikelyEmail(input: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input);
 }
 
+function sanitizeHttpsUrl(input: string) {
+  const raw = String(input ?? "").trim();
+  if (!raw) return "";
+
+  try {
+    const u = new URL(raw);
+    return u.protocol === "https:" ? raw : "";
+  } catch {
+    return "";
+  }
+}
+
 export const completeOnboarding = mutation({
   args: {
     fullName: v.string(),
@@ -47,6 +59,52 @@ export const completeOnboarding = mutation({
       throw new Error("Missing email");
     }
 
+    const validCompanySizes = ["1-10", "11-50", "51-200", "201-500", "500+"];
+    const validUseCases = ["DevRel", "Content", "GTM", "Community", "Other"];
+
+    const fullName = args.fullName.trim();
+    const companyName = args.companyName.trim();
+    const workspaceName = args.workspaceName.trim();
+    const avatarUrl = sanitizeHttpsUrl(args.avatarUrl);
+
+    if (!fullName) {
+      throw new Error("fullName is required");
+    }
+    if (!companyName) {
+      throw new Error("companyName is required");
+    }
+    if (!workspaceName) {
+      throw new Error("workspaceName is required");
+    }
+
+    if (fullName.length > 120) {
+      throw new Error("fullName is too long");
+    }
+    if (companyName.length > 120) {
+      throw new Error("companyName is too long");
+    }
+    if (workspaceName.length > 120) {
+      throw new Error("workspaceName is too long");
+    }
+
+    if (args.inviteEmails.length > 5_000) {
+      throw new Error("inviteEmails is too long");
+    }
+
+    if (!validCompanySizes.includes(args.companySize)) {
+      throw new Error("Invalid companySize");
+    }
+
+    if (!validUseCases.includes(args.useCase)) {
+      throw new Error("Invalid useCase");
+    }
+
+    const inviteParts = splitEmails(args.inviteEmails);
+    const invalidInvite = inviteParts.find((e) => !isLikelyEmail(e));
+    if (invalidInvite) {
+      throw new Error("One or more invite emails are invalid");
+    }
+
     const now = Date.now();
 
     const existingUser = await ctx.db
@@ -54,16 +112,16 @@ export const completeOnboarding = mutation({
       .withIndex("by_clerk_id", (q) => q.eq("clerkId", clerkId))
       .unique();
 
-    const [firstName, ...rest] = args.fullName.trim().split(/\s+/g);
+    const [firstName, ...rest] = fullName.split(/\s+/g);
     const lastName = rest.length > 0 ? rest.join(" ") : undefined;
 
     const onboardingPayload = {
-      fullName: args.fullName,
-      avatarUrl: args.avatarUrl,
-      companyName: args.companyName,
+      fullName,
+      avatarUrl,
+      companyName,
       companySize: args.companySize,
       useCase: args.useCase,
-      workspaceName: args.workspaceName,
+      workspaceName,
       inviteEmails: args.inviteEmails,
       completedAt: now,
     };
@@ -75,7 +133,8 @@ export const completeOnboarding = mutation({
         email,
         firstName: firstName || undefined,
         lastName,
-        imageUrl: args.avatarUrl || identity.pictureUrl || undefined,
+        avatarUrl: avatarUrl || undefined,
+        imageUrl: avatarUrl || identity.pictureUrl || undefined,
         role: "owner",
         onboardingComplete: false,
         onboarding: onboardingPayload,
@@ -88,7 +147,8 @@ export const completeOnboarding = mutation({
         email,
         firstName: firstName || existingUser.firstName,
         lastName: lastName ?? existingUser.lastName,
-        imageUrl: args.avatarUrl || existingUser.imageUrl,
+        avatarUrl: avatarUrl || existingUser.avatarUrl,
+        imageUrl: avatarUrl || existingUser.imageUrl,
         onboarding: onboardingPayload,
         updatedAt: now,
       });
@@ -100,7 +160,7 @@ export const completeOnboarding = mutation({
       }
     }
 
-    const rawWorkspaceName = args.workspaceName.trim() || args.companyName.trim() || "Workspace";
+    const rawWorkspaceName = workspaceName || companyName || "Workspace";
 
     const slugBase = slugify(rawWorkspaceName);
     let slug = slugBase;
@@ -131,32 +191,21 @@ export const completeOnboarding = mutation({
       plan: "free",
       settings: {
         useCase: args.useCase,
-        companyName: args.companyName,
+        companyName,
         companySize: args.companySize,
       },
       createdAt: now,
       updatedAt: now,
     });
 
-    const existingMember = await ctx.db
-      .query("workspaceMembers")
-      .withIndex("by_workspace_and_user", (q) =>
-        q.eq("workspaceId", workspaceId).eq("userId", userId)
-      )
-      .unique();
+    await ctx.db.insert("workspaceMembers", {
+      workspaceId,
+      userId,
+      role: "owner",
+      joinedAt: now,
+    });
 
-    if (!existingMember) {
-      await ctx.db.insert("workspaceMembers", {
-        workspaceId,
-        userId,
-        role: "owner",
-        joinedAt: now,
-      });
-    }
-
-    const invites = splitEmails(args.inviteEmails)
-      .filter((e) => isLikelyEmail(e))
-      .filter((e) => e !== email.toLowerCase());
+    const invites = inviteParts.filter((e) => e !== email.toLowerCase());
 
     for (const inviteEmail of invites) {
       const existingInvite = await ctx.db
