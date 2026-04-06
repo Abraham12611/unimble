@@ -99,18 +99,20 @@ export const deleteByClerkId = internalMutation({
       await ctx.db.delete(m._id);
     }
 
-    const allInvites = await ctx.db.query("workspaceInvites").collect();
-    for (const inv of allInvites) {
-      if (inv.invitedBy === userId) {
-        await ctx.db.delete(inv._id);
-      }
+    const invitesByUser = await ctx.db
+      .query("workspaceInvites")
+      .withIndex("by_invited_by", (q) => q.eq("invitedBy", userId))
+      .collect();
+    for (const inv of invitesByUser) {
+      await ctx.db.delete(inv._id);
     }
 
-    const allMembers = await ctx.db.query("workspaceMembers").collect();
-    for (const m of allMembers) {
-      if (m.invitedBy === userId) {
-        await ctx.db.patch(m._id, { invitedBy: undefined });
-      }
+    const membersByInviter = await ctx.db
+      .query("workspaceMembers")
+      .withIndex("by_invited_by", (q) => q.eq("invitedBy", userId))
+      .collect();
+    for (const m of membersByInviter) {
+      await ctx.db.patch(m._id, { invitedBy: undefined });
     }
 
     await ctx.db.delete(userId);
