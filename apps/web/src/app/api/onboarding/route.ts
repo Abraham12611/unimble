@@ -17,6 +17,32 @@ type OnboardingPayload = {
   inviteEmails: string;
 };
 
+function sanitizeHttpsUrl(input: unknown) {
+  const raw = String(input ?? "").trim();
+  if (!raw) return "";
+
+  try {
+    const u = new URL(raw);
+    return u.protocol === "https:" ? raw : "";
+  } catch {
+    return "";
+  }
+}
+
+function parseInviteEmails(input: unknown) {
+  const raw = String(input ?? "");
+  const parts = raw
+    .split(/[\n,;]+/g)
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+
+  return { raw, parts };
+}
+
+function isLikelyEmail(input: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input);
+}
+
 export async function POST(req: Request) {
   const { userId, getToken } = await auth();
   if (!userId) {
@@ -33,16 +59,41 @@ export async function POST(req: Request) {
   const validCompanySizes: CompanySize[] = ["1-10", "11-50", "51-200", "201-500", "500+"];
   const validUseCases: UseCase[] = ["DevRel", "Content", "GTM", "Community", "Other"];
 
+  const fullName = String(body.fullName ?? "").trim();
+  const companyName = String(body.companyName ?? "").trim();
+  const workspaceName = String(body.workspaceName ?? "").trim();
+  const avatarUrl = sanitizeHttpsUrl(body.avatarUrl);
+  const invitesParsed = parseInviteEmails(body.inviteEmails);
+
+  if (fullName.length > 120) {
+    return NextResponse.json({ error: "fullName is too long" }, { status: 400 });
+  }
+  if (companyName.length > 120) {
+    return NextResponse.json({ error: "companyName is too long" }, { status: 400 });
+  }
+  if (workspaceName.length > 120) {
+    return NextResponse.json({ error: "workspaceName is too long" }, { status: 400 });
+  }
+
+  if (invitesParsed.raw.length > 5_000) {
+    return NextResponse.json({ error: "inviteEmails is too long" }, { status: 400 });
+  }
+
+  const invalidInvite = invitesParsed.parts.find((e) => !isLikelyEmail(e));
+  if (invalidInvite) {
+    return NextResponse.json({ error: "One or more invite emails are invalid" }, { status: 400 });
+  }
+
   const payload: OnboardingPayload = {
-    fullName: String(body.fullName ?? "").trim(),
-    avatarUrl: String(body.avatarUrl ?? "").trim(),
-    companyName: String(body.companyName ?? "").trim(),
+    fullName,
+    avatarUrl,
+    companyName,
     companySize: validCompanySizes.includes(body.companySize as CompanySize)
       ? (body.companySize as CompanySize)
       : "1-10",
     useCase: validUseCases.includes(body.useCase as UseCase) ? (body.useCase as UseCase) : "DevRel",
-    workspaceName: String(body.workspaceName ?? "").trim(),
-    inviteEmails: String(body.inviteEmails ?? ""),
+    workspaceName,
+    inviteEmails: invitesParsed.parts.join("\n"),
   };
 
   if (!payload.fullName) {
