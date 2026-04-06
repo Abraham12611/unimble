@@ -26,7 +26,10 @@ export default clerkMiddleware(async (auth, req) => {
   const { userId, sessionClaims } = session;
 
   const claims = sessionClaims as OnboardingClaims | null | undefined;
-  const onboardingCookie = req.cookies.get("__unimble_onboarding_complete")?.value;
+  const onboardingCookieName = userId ? `__unimble_onboarding_complete_${userId}` : null;
+  const onboardingCookie = onboardingCookieName
+    ? req.cookies.get(onboardingCookieName)?.value
+    : undefined;
   const claimComplete =
     claims?.publicMetadata?.onboardingComplete ??
     claims?.public_metadata?.onboardingComplete ??

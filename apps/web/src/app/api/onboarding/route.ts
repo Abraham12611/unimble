@@ -164,7 +164,7 @@ export async function POST(req: Request) {
 
   const res = NextResponse.json({ ok: true });
   res.cookies.set({
-    name: "__unimble_onboarding_complete",
+    name: `__unimble_onboarding_complete_${userId}`,
     value: "1",
     httpOnly: true,
     sameSite: "lax",
