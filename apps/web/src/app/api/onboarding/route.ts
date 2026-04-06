@@ -24,15 +24,18 @@ function parseHttpsUrlOrThrow(input: unknown) {
   const raw = String(input ?? "").trim();
   if (!raw) return "";
 
+  let u: URL;
   try {
-    const u = new URL(raw);
-    if (u.protocol !== "https:") {
-      throw new Error("avatarUrl must use https");
-    }
-    return raw;
+    u = new URL(raw);
   } catch {
     throw new Error("avatarUrl must be a valid https URL");
   }
+
+  if (u.protocol !== "https:") {
+    throw new Error("avatarUrl must use https");
+  }
+
+  return raw;
 }
 
 function parseInviteEmails(input: unknown) {
