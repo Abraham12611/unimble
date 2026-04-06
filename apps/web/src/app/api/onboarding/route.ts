@@ -168,7 +168,13 @@ export async function POST(req: Request) {
       },
       privateMetadata: {
         onboarding: {
-          ...payload,
+          fullName: payload.fullName,
+          ...(payload.avatarUrl ? { avatarUrl: payload.avatarUrl } : {}),
+          companyName: payload.companyName,
+          companySize: payload.companySize,
+          useCase: payload.useCase,
+          workspaceName: payload.workspaceName,
+          inviteEmails: payload.inviteEmails,
           completedAt: new Date().toISOString(),
           workspaceId,
         },
