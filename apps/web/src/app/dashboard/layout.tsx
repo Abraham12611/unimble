@@ -9,7 +9,7 @@ export default async function Layout({
   await requireAuth();
 
   return (
-    <div className="flex-1 p-6 bg-[#090909] text-[#F0F0F0]">
+    <div className="flex-1 bg-[#090909] p-6 text-[#F0F0F0]">
       <div className="mx-auto w-full max-w-5xl">{children}</div>
     </div>
   );

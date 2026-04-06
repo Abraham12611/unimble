@@ -10,6 +10,7 @@
 
 import type * as http from "../http.js";
 import type * as onboarding from "../onboarding.js";
+import type * as rbac from "../rbac.js";
 import type * as users from "../users.js";
 import type * as webhooks from "../webhooks.js";
 
@@ -18,6 +19,7 @@ import type { ApiFromModules, FilterApi, FunctionReference } from "convex/server
 declare const fullApi: ApiFromModules<{
   http: typeof http;
   onboarding: typeof onboarding;
+  rbac: typeof rbac;
   users: typeof users;
   webhooks: typeof webhooks;
 }>;

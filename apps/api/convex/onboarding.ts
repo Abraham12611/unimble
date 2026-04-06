@@ -1,6 +1,7 @@
 import type { Id } from "./_generated/dataModel";
 import { mutation } from "./_generated/server";
 import { v } from "convex/values";
+import { derivePlatformRole } from "./rbac";
 
 function slugify(input: string) {
   const base = input
@@ -128,6 +129,7 @@ export const completeOnboarding = mutation({
 
     let userId: Id<"users">;
     if (!existingUser) {
+      const platformRole = derivePlatformRole({ clerkId, email, existingRole: undefined });
       userId = await ctx.db.insert("users", {
         clerkId,
         email,
@@ -135,7 +137,7 @@ export const completeOnboarding = mutation({
         lastName,
         avatarUrl: avatarUrl || undefined,
         imageUrl: avatarUrl || identity.pictureUrl || undefined,
-        role: "owner",
+        role: platformRole,
         onboardingComplete: false,
         onboarding: onboardingPayload,
         createdAt: now,
@@ -143,12 +145,19 @@ export const completeOnboarding = mutation({
       });
     } else {
       userId = existingUser._id;
+
+      const platformRole = derivePlatformRole({
+        clerkId,
+        email,
+        existingRole: existingUser.role,
+      });
       await ctx.db.patch(userId, {
         email,
         firstName: firstName || existingUser.firstName,
         lastName: lastName ?? existingUser.lastName,
         avatarUrl: avatarUrl || existingUser.avatarUrl,
         imageUrl: avatarUrl || existingUser.imageUrl,
+        role: platformRole,
         onboarding: onboardingPayload,
         updatedAt: now,
       });

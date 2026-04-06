@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "convex dev",
     "deploy": "convex deploy",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --test --import tsx convex/rbac.test.ts"
   },
   "dependencies": {
     "convex": "^1.34.1",
@@ -14,6 +15,7 @@
   },
   "devDependencies": {
     "@types/node": "^20",
+    "tsx": "^4.19.2",
     "typescript": "^5"
   }
 }
