@@ -1,11 +1,11 @@
-import { test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
 test("/dashboard redirects unauthenticated users to /sign-in", async ({ page }) => {
   await page.goto("/dashboard", { waitUntil: "domcontentloaded" });
-  await page.waitForURL(/\/sign-in/);
+  await expect(page).toHaveURL(/\/sign-in/);
 });
 
-test("/creator redirects unauthenticated users to /sign-in", async ({ page }) => {
-  await page.goto("/creator", { waitUntil: "domcontentloaded" });
-  await page.waitForURL(/\/sign-in/);
+test("/settings redirects unauthenticated users to /sign-in", async ({ page }) => {
+  await page.goto("/settings", { waitUntil: "domcontentloaded" });
+  await expect(page).toHaveURL(/\/sign-in/);
 });

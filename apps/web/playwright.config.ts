@@ -5,6 +5,7 @@ const PORT = 3100;
 export default defineConfig({
   testDir: "./e2e",
   timeout: 30_000,
+  forbidOnly: !!process.env.CI,
   expect: {
     timeout: 10_000,
   },
