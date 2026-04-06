@@ -20,16 +20,22 @@ type OnboardingPayload = {
   inviteEmails: string;
 };
 
-function sanitizeHttpsUrl(input: unknown) {
+function parseHttpsUrlOrThrow(input: unknown) {
   const raw = String(input ?? "").trim();
   if (!raw) return "";
 
+  let u: URL;
   try {
-    const u = new URL(raw);
-    return u.protocol === "https:" ? raw : "";
+    u = new URL(raw);
   } catch {
-    return "";
+    throw new Error("avatarUrl must be a valid https URL");
   }
+
+  if (u.protocol !== "https:") {
+    throw new Error("avatarUrl must use https");
+  }
+
+  return raw;
 }
 
 function parseInviteEmails(input: unknown) {
@@ -65,8 +71,20 @@ export async function POST(req: Request) {
   const fullName = String(body.fullName ?? "").trim();
   const companyName = String(body.companyName ?? "").trim();
   const workspaceName = String(body.workspaceName ?? "").trim();
-  const avatarUrl = sanitizeHttpsUrl(body.avatarUrl);
+  let avatarUrl: string;
+  try {
+    avatarUrl = parseHttpsUrlOrThrow(body.avatarUrl);
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Invalid avatarUrl" },
+      { status: 400 }
+    );
+  }
   const invitesParsed = parseInviteEmails(body.inviteEmails);
+
+  if (avatarUrl.length > 2_048) {
+    return NextResponse.json({ error: "avatarUrl is too long" }, { status: 400 });
+  }
 
   if (fullName.length > 120) {
     return NextResponse.json({ error: "fullName is too long" }, { status: 400 });
@@ -150,7 +168,13 @@ export async function POST(req: Request) {
       },
       privateMetadata: {
         onboarding: {
-          ...payload,
+          fullName: payload.fullName,
+          ...(payload.avatarUrl ? { avatarUrl: payload.avatarUrl } : {}),
+          companyName: payload.companyName,
+          companySize: payload.companySize,
+          useCase: payload.useCase,
+          workspaceName: payload.workspaceName,
+          inviteEmails: payload.inviteEmails,
           completedAt: new Date().toISOString(),
           workspaceId,
         },
