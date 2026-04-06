@@ -33,11 +33,15 @@ export async function POST() {
 
   const otherSessionIds = sessionIds.filter((id) => id !== sessionId);
 
-  const results = await Promise.allSettled(
-    otherSessionIds.map((id) => client.sessions.revokeSession(id))
-  );
-  const revokedCount = results.filter((r) => r.status === "fulfilled").length;
-  const failedCount = results.filter((r) => r.status === "rejected").length;
+  let revokedCount = 0;
+  let failedCount = 0;
+  const batchSize = 10;
+  for (let i = 0; i < otherSessionIds.length; i += batchSize) {
+    const batch = otherSessionIds.slice(i, i + batchSize);
+    const results = await Promise.allSettled(batch.map((id) => client.sessions.revokeSession(id)));
+    revokedCount += results.filter((r) => r.status === "fulfilled").length;
+    failedCount += results.filter((r) => r.status === "rejected").length;
+  }
 
   return NextResponse.json({ ok: true, revokedCount, failedCount });
 }

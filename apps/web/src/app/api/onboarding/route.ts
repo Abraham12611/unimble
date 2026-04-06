@@ -84,14 +84,20 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "One or more invite emails are invalid" }, { status: 400 });
   }
 
+  if (!validCompanySizes.includes(body.companySize as CompanySize)) {
+    return NextResponse.json({ error: "Invalid companySize" }, { status: 400 });
+  }
+
+  if (!validUseCases.includes(body.useCase as UseCase)) {
+    return NextResponse.json({ error: "Invalid useCase" }, { status: 400 });
+  }
+
   const payload: OnboardingPayload = {
     fullName,
     avatarUrl,
     companyName,
-    companySize: validCompanySizes.includes(body.companySize as CompanySize)
-      ? (body.companySize as CompanySize)
-      : "1-10",
-    useCase: validUseCases.includes(body.useCase as UseCase) ? (body.useCase as UseCase) : "DevRel",
+    companySize: body.companySize as CompanySize,
+    useCase: body.useCase as UseCase,
     workspaceName,
     inviteEmails: invitesParsed.parts.join("\n"),
   };
@@ -102,6 +108,10 @@ export async function POST(req: Request) {
 
   if (!payload.workspaceName) {
     return NextResponse.json({ error: "workspaceName is required" }, { status: 400 });
+  }
+
+  if (!payload.companyName) {
+    return NextResponse.json({ error: "companyName is required" }, { status: 400 });
   }
 
   const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL ?? process.env.CONVEX_URL;
