@@ -61,7 +61,59 @@ export const deleteByClerkId = internalMutation({
       return;
     }
 
-    await ctx.db.delete(existing._id);
+    const userId = existing._id;
+
+    const ownedWorkspaces = await ctx.db
+      .query("workspaces")
+      .withIndex("by_owner", (q) => q.eq("ownerId", userId))
+      .collect();
+
+    for (const ws of ownedWorkspaces) {
+      const members = await ctx.db
+        .query("workspaceMembers")
+        .withIndex("by_workspace", (q) => q.eq("workspaceId", ws._id))
+        .collect();
+
+      for (const m of members) {
+        await ctx.db.delete(m._id);
+      }
+
+      const invites = await ctx.db
+        .query("workspaceInvites")
+        .withIndex("by_workspace", (q) => q.eq("workspaceId", ws._id))
+        .collect();
+
+      for (const inv of invites) {
+        await ctx.db.delete(inv._id);
+      }
+
+      await ctx.db.delete(ws._id);
+    }
+
+    const memberships = await ctx.db
+      .query("workspaceMembers")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .collect();
+
+    for (const m of memberships) {
+      await ctx.db.delete(m._id);
+    }
+
+    const allInvites = await ctx.db.query("workspaceInvites").collect();
+    for (const inv of allInvites) {
+      if (inv.invitedBy === userId) {
+        await ctx.db.delete(inv._id);
+      }
+    }
+
+    const allMembers = await ctx.db.query("workspaceMembers").collect();
+    for (const m of allMembers) {
+      if (m.invitedBy === userId) {
+        await ctx.db.patch(m._id, { invitedBy: undefined });
+      }
+    }
+
+    await ctx.db.delete(userId);
   },
 });
 

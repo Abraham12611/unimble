@@ -55,6 +55,7 @@ export default defineSchema({
   })
     .index("by_workspace", ["workspaceId"])
     .index("by_user", ["userId"])
+    .index("by_invited_by", ["invitedBy"])
     .index("by_workspace_and_user", ["workspaceId", "userId"]),
 
   workspaceInvites: defineTable({
@@ -65,5 +66,6 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index("by_workspace", ["workspaceId"])
+    .index("by_invited_by", ["invitedBy"])
     .index("by_workspace_and_email", ["workspaceId", "email"]),
 });

@@ -13,6 +13,7 @@ export async function GET() {
   try {
     response = await client.sessions.getSessionList({
       userId,
+      status: "active",
       limit: 50,
       offset: 0,
     });
