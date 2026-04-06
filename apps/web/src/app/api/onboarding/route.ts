@@ -2,6 +2,9 @@ import { auth, clerkClient } from "@clerk/nextjs/server";
 import { ConvexHttpClient } from "convex/browser";
 import { makeFunctionReference } from "convex/server";
 import { NextResponse } from "next/server";
+import { createHmac } from "crypto";
+
+export const runtime = "nodejs";
 
 type CompanySize = "1-10" | "11-50" | "51-200" | "201-500" | "500+";
 
@@ -163,15 +166,24 @@ export async function POST(req: Request) {
   }
 
   const res = NextResponse.json({ ok: true });
-  res.cookies.set({
-    name: "__unimble_onboarding_complete",
-    value: "1",
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 365,
-  });
+
+  const secret = process.env.ONBOARDING_COOKIE_SECRET ?? process.env.CLERK_SECRET_KEY;
+  if (secret) {
+    const issuedAt = Date.now();
+    const payloadToSign = `v1|${userId}|${issuedAt}`;
+    const signature = createHmac("sha256", secret).update(payloadToSign).digest("base64url");
+    const cookieValue = `v1.${issuedAt}.${signature}`;
+
+    res.cookies.set({
+      name: `__unimble_onboarding_complete_${userId}`,
+      value: cookieValue,
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 60 * 10,
+    });
+  }
 
   return res;
 }
