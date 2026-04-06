@@ -75,6 +75,16 @@ export const deleteByClerkId = internalMutation({
         .collect();
 
       for (const m of members) {
+        if (m.userId !== userId) {
+          const memberUser = await ctx.db.get(m.userId);
+          if (memberUser?.defaultWorkspaceId === ws._id) {
+            await ctx.db.patch(m.userId, {
+              defaultWorkspaceId: undefined,
+              updatedAt: Date.now(),
+            });
+          }
+        }
+
         await ctx.db.delete(m._id);
       }
 
