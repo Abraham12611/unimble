@@ -13,6 +13,7 @@ import type * as onboarding from "../onboarding.js";
 import type * as rbac from "../rbac.js";
 import type * as users from "../users.js";
 import type * as webhooks from "../webhooks.js";
+import type * as workspaces from "../workspaces.js";
 
 import type { ApiFromModules, FilterApi, FunctionReference } from "convex/server";
 
@@ -22,6 +23,7 @@ declare const fullApi: ApiFromModules<{
   rbac: typeof rbac;
   users: typeof users;
   webhooks: typeof webhooks;
+  workspaces: typeof workspaces;
 }>;
 
 /**
