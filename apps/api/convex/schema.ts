@@ -121,6 +121,8 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_workspace", ["workspaceId"])
+    .index("by_operator", ["operatorId"])
+    .index("by_workspace_and_operator", ["workspaceId", "operatorId"])
     .index("by_status", ["status"])
     .index("by_workspace_and_status", ["workspaceId", "status"]),
 
@@ -157,6 +159,8 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_workspace", ["workspaceId"])
+    .index("by_operator", ["operatorId"])
+    .index("by_workspace_and_operator", ["workspaceId", "operatorId"])
     .index("by_workflow", ["workflowId"])
     .index("by_status", ["status"])
     .index("by_workspace_and_status", ["workspaceId", "status"]),

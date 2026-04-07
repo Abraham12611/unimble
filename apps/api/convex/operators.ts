@@ -296,7 +296,9 @@ export async function deleteOperatorImpl(ctx: MutationCtx, args: { id: Id<"opera
 
   const workflows = await ctx.db
     .query("workflows")
-    .filter((q) => q.eq(q.field("operatorId"), args.id))
+    .withIndex("by_workspace_and_operator", (q) =>
+      q.eq("workspaceId", op.workspaceId).eq("operatorId", args.id)
+    )
     .collect();
 
   for (const wf of workflows) {
@@ -305,7 +307,9 @@ export async function deleteOperatorImpl(ctx: MutationCtx, args: { id: Id<"opera
 
   const executions = await ctx.db
     .query("executions")
-    .filter((q) => q.eq(q.field("operatorId"), args.id))
+    .withIndex("by_workspace_and_operator", (q) =>
+      q.eq("workspaceId", op.workspaceId).eq("operatorId", args.id)
+    )
     .collect();
 
   for (const exe of executions) {

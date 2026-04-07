@@ -239,10 +239,20 @@ export async function updateExecutionStatusImpl(
   if (args.error !== undefined) patch.error = args.error;
   if (args.cost !== undefined) patch.cost = args.cost;
 
-  const nextCompletedAt = args.completedAt ?? (nextStatus !== "running" ? now : undefined);
-  if (nextCompletedAt !== undefined) {
+  const terminalStatuses = new Set(["completed", "failed", "canceled"]);
+  const isTerminal = terminalStatuses.has(nextStatus);
+
+  if (isTerminal) {
+    const nextCompletedAt = args.completedAt ?? now;
     patch.completedAt = nextCompletedAt;
     patch.duration = Math.max(0, nextCompletedAt - exe.startedAt);
+  } else {
+    if (exe.completedAt !== undefined) {
+      patch.completedAt = undefined;
+    }
+    if (exe.duration !== undefined) {
+      patch.duration = undefined;
+    }
   }
 
   await ctx.db.patch(args.id, patch);
@@ -513,8 +523,17 @@ export async function updateExecutionStepStatusImpl(
   const startedAt = args.startedAt ?? (status === "running" ? now : step.startedAt);
   if (startedAt !== undefined) patch.startedAt = startedAt;
 
-  const completedAt = args.completedAt ?? (status !== "running" ? now : step.completedAt);
-  if (completedAt !== undefined && status !== "running") patch.completedAt = completedAt;
+  const terminalStepStatuses = new Set(["completed", "failed", "canceled", "skipped"]);
+  const isTerminalStep = terminalStepStatuses.has(status);
+
+  if (isTerminalStep) {
+    const completedAt = args.completedAt ?? now;
+    patch.completedAt = completedAt;
+  } else {
+    if (step.completedAt !== undefined) {
+      patch.completedAt = undefined;
+    }
+  }
 
   await ctx.db.patch(args.id, patch);
   return args.id;

@@ -87,7 +87,7 @@ describe("workflows", () => {
     const listed = await ownerAuthed.query(async (ctx) => {
       return await listWorkflowsImpl(ctx, { workspaceId });
     });
-    expect(listed.find((w) => w._id === workflowId)).toBeTruthy();
+    expect(listed.find((w: { _id: unknown }) => w._id === workflowId)).toBeTruthy();
 
     const versionsAfterCreate = await ownerAuthed.query(async (ctx) => {
       return await listWorkflowVersionsImpl(ctx, { workflowId });
@@ -113,8 +113,8 @@ describe("workflows", () => {
       return await listWorkflowVersionsImpl(ctx, { workflowId });
     });
     expect(versionsAfterUpdate.length).toBe(2);
-    expect(versionsAfterUpdate.some((v) => v.version === 1)).toBe(true);
-    expect(versionsAfterUpdate.some((v) => v.version === 2)).toBe(true);
+    expect(versionsAfterUpdate.some((v: { version: unknown }) => v.version === 1)).toBe(true);
+    expect(versionsAfterUpdate.some((v: { version: unknown }) => v.version === 2)).toBe(true);
 
     const duplicateId = await ownerAuthed.mutation(async (ctx) => {
       return await duplicateWorkflowImpl(ctx, { id: workflowId });

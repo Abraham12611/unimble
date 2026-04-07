@@ -116,6 +116,20 @@ describe("executions", () => {
     expect(running.status).toBe("running");
     expect(running.completedAt).toBeUndefined();
 
+    await ownerAuthed.mutation(async (ctx) => {
+      return await updateExecutionStatusImpl(ctx, {
+        id: executionId,
+        status: "queued",
+      });
+    });
+
+    const requeued = await ownerAuthed.query(async (ctx) => {
+      return await getExecutionImpl(ctx, { id: executionId });
+    });
+    expect(requeued.status).toBe("queued");
+    expect(requeued.completedAt).toBeUndefined();
+    expect(requeued.duration).toBeUndefined();
+
     const stepDocId = await ownerAuthed.mutation(async (ctx) => {
       return await createExecutionStepImpl(ctx, {
         executionId,
@@ -147,6 +161,19 @@ describe("executions", () => {
 
     expect(stepFetched.status).toBe("running");
     expect(stepFetched.startedAt).toBeTypeOf("number");
+
+    await ownerAuthed.mutation(async (ctx) => {
+      return await updateExecutionStepStatusImpl(ctx, {
+        id: stepDocId,
+        status: "queued",
+      });
+    });
+
+    const stepRequeued = await ownerAuthed.query(async (ctx) => {
+      return await getExecutionStepImpl(ctx, { id: stepDocId });
+    });
+    expect(stepRequeued.status).toBe("queued");
+    expect(stepRequeued.completedAt).toBeUndefined();
 
     await ownerAuthed.mutation(async (ctx) => {
       return await updateExecutionStatusImpl(ctx, {
