@@ -435,6 +435,14 @@ export async function deleteWorkspaceImpl(ctx: MutationCtx, args: { id: Id<"work
     await ctx.db.delete(l._id);
   }
 
+  const workflowVersions = await ctx.db
+    .query("workflowVersions")
+    .withIndex("by_workspace", (q) => q.eq("workspaceId", args.id))
+    .collect();
+  for (const v of workflowVersions) {
+    await ctx.db.delete(v._id);
+  }
+
   await ctx.db.delete(args.id);
   return args.id;
 }
