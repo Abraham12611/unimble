@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const workflowValidator = z.object({
-  workspaceId: z.string().trim().min(1).optional(),
+  workspaceId: z.string().trim().min(1),
   operatorId: z.string().trim().min(1).optional(),
   name: z.string().trim().min(1).max(120),
   description: z.string().trim().min(1).max(1_000).optional(),

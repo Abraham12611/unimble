@@ -46,13 +46,13 @@ function parseHttpsUrlOrThrow(rawInput: string) {
 
 export const completeOnboarding = mutation({
   args: {
-    fullName: convexValidators.nonEmptyString,
-    avatarUrl: convexValidators.nonEmptyString,
-    companyName: convexValidators.nonEmptyString,
-    companySize: convexValidators.nonEmptyString,
-    useCase: convexValidators.nonEmptyString,
-    workspaceName: convexValidators.nonEmptyString,
-    inviteEmails: convexValidators.nonEmptyString,
+    fullName: convexValidators.stringField,
+    avatarUrl: convexValidators.stringField,
+    companyName: convexValidators.stringField,
+    companySize: convexValidators.stringField,
+    useCase: convexValidators.stringField,
+    workspaceName: convexValidators.stringField,
+    inviteEmails: convexValidators.stringField,
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();

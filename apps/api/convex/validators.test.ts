@@ -20,13 +20,32 @@ test("workspaceValidator: rejects empty name", () => {
   assert.equal(result.success, false);
 });
 
+test("workspaceValidator: rejects whitespace-only name", () => {
+  const result = workspaceValidator.safeParse({ name: "   " });
+  assert.equal(result.success, false);
+});
+
 test("operatorValidator: accepts required fields", () => {
-  const result = operatorValidator.safeParse({ type: "agent", name: "My Operator" });
+  const result = operatorValidator.safeParse({
+    workspaceId: "ws_123",
+    type: "agent",
+    name: "My Operator",
+  });
   assert.equal(result.success, true);
+});
+
+test("operatorValidator: rejects missing workspaceId", () => {
+  const result = operatorValidator.safeParse({ type: "agent", name: "My Operator" });
+  assert.equal(result.success, false);
 });
 
 test("workflowValidator: rejects missing name", () => {
   const result = workflowValidator.safeParse({});
+  assert.equal(result.success, false);
+});
+
+test("workflowValidator: rejects missing workspaceId", () => {
+  const result = workflowValidator.safeParse({ name: "My Workflow" });
   assert.equal(result.success, false);
 });
 

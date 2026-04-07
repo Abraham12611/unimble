@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const operatorValidator = z.object({
-  workspaceId: z.string().trim().min(1).optional(),
+  workspaceId: z.string().trim().min(1),
   type: z.string().trim().min(1).max(120),
   name: z.string().trim().min(1).max(120),
   description: z.string().trim().min(1).max(500).optional(),

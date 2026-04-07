@@ -9,8 +9,8 @@ import {
 
 export const upsertFromClerk = internalMutation({
   args: {
-    clerkId: convexValidators.nonEmptyString,
-    email: convexValidators.nonEmptyString,
+    clerkId: convexValidators.stringField,
+    email: convexValidators.stringField,
     name: convexValidators.optionalString,
     firstName: convexValidators.optionalString,
     lastName: convexValidators.optionalString,
@@ -18,6 +18,13 @@ export const upsertFromClerk = internalMutation({
     imageUrl: convexValidators.optionalString,
   },
   handler: async (ctx, args) => {
+    if (!args.clerkId.trim()) {
+      throw new Error("clerkId is required");
+    }
+    if (!args.email.trim()) {
+      throw new Error("email is required");
+    }
+
     const now = Date.now();
 
     const existing = await ctx.db
@@ -68,9 +75,13 @@ export const upsertFromClerk = internalMutation({
 
 export const deleteByClerkId = internalMutation({
   args: {
-    clerkId: convexValidators.nonEmptyString,
+    clerkId: convexValidators.stringField,
   },
   handler: async (ctx, args) => {
+    if (!args.clerkId.trim()) {
+      throw new Error("clerkId is required");
+    }
+
     const existing = await ctx.db
       .query("users")
       .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
@@ -202,7 +213,7 @@ export const getUserById = internalQuery({
 
 export const getUserByClerkId = internalQuery({
   args: {
-    clerkId: convexValidators.nonEmptyString,
+    clerkId: convexValidators.stringField,
   },
   handler: async (ctx, args) => {
     return await ctx.db

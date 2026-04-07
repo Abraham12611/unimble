@@ -24,7 +24,7 @@ function assertIsUnionJson(
 }
 
 test("convexValidators exports Convex validators", () => {
-  assertIsConvexValidator(convexValidators.nonEmptyString);
+  assertIsConvexValidator(convexValidators.stringField);
   assertIsConvexValidator(convexValidators.optionalString);
   assertIsConvexValidator(convexValidators.optionalNullableString);
   assertIsConvexValidator(convexValidators.userId);

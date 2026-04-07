@@ -5,7 +5,7 @@ export const convexValidators = {
   paginationOpts: paginationOptsValidator,
 
   // Common primitives
-  nonEmptyString: v.string(),
+  stringField: v.string(),
   optionalString: v.optional(v.string()),
   optionalNullableString: v.optional(v.union(v.string(), v.null())),
 
