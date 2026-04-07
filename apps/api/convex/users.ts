@@ -1,5 +1,4 @@
-import { paginationOptsValidator } from "convex/server";
-import { v } from "convex/values";
+import { convexValidators } from "./argValidators";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import {
   derivePlatformRole,
@@ -10,13 +9,13 @@ import {
 
 export const upsertFromClerk = internalMutation({
   args: {
-    clerkId: v.string(),
-    email: v.string(),
-    name: v.optional(v.string()),
-    firstName: v.optional(v.string()),
-    lastName: v.optional(v.string()),
-    avatarUrl: v.optional(v.string()),
-    imageUrl: v.optional(v.string()),
+    clerkId: convexValidators.nonEmptyString,
+    email: convexValidators.nonEmptyString,
+    name: convexValidators.optionalString,
+    firstName: convexValidators.optionalString,
+    lastName: convexValidators.optionalString,
+    avatarUrl: convexValidators.optionalString,
+    imageUrl: convexValidators.optionalString,
   },
   handler: async (ctx, args) => {
     const now = Date.now();
@@ -69,7 +68,7 @@ export const upsertFromClerk = internalMutation({
 
 export const deleteByClerkId = internalMutation({
   args: {
-    clerkId: v.string(),
+    clerkId: convexValidators.nonEmptyString,
   },
   handler: async (ctx, args) => {
     const existing = await ctx.db
@@ -167,7 +166,7 @@ export const getCurrentUser = query({
 
 export const listUsers = query({
   args: {
-    paginationOpts: paginationOptsValidator,
+    paginationOpts: convexValidators.paginationOpts,
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -194,7 +193,7 @@ export const listUsers = query({
 
 export const getUserById = internalQuery({
   args: {
-    id: v.id("users"),
+    id: convexValidators.userId,
   },
   handler: async (ctx, args) => {
     return await ctx.db.get(args.id);
@@ -203,7 +202,7 @@ export const getUserById = internalQuery({
 
 export const getUserByClerkId = internalQuery({
   args: {
-    clerkId: v.string(),
+    clerkId: convexValidators.nonEmptyString,
   },
   handler: async (ctx, args) => {
     return await ctx.db
@@ -215,11 +214,11 @@ export const getUserByClerkId = internalQuery({
 
 export const updateUser = mutation({
   args: {
-    name: v.optional(v.union(v.string(), v.null())),
-    firstName: v.optional(v.union(v.string(), v.null())),
-    lastName: v.optional(v.union(v.string(), v.null())),
-    avatarUrl: v.optional(v.union(v.string(), v.null())),
-    imageUrl: v.optional(v.union(v.string(), v.null())),
+    name: convexValidators.optionalNullableString,
+    firstName: convexValidators.optionalNullableString,
+    lastName: convexValidators.optionalNullableString,
+    avatarUrl: convexValidators.optionalNullableString,
+    imageUrl: convexValidators.optionalNullableString,
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -258,8 +257,8 @@ export const updateUser = mutation({
 
 export const setPlatformRole = mutation({
   args: {
-    userId: v.id("users"),
-    role: v.union(v.literal("user"), v.literal("creator")),
+    userId: convexValidators.userId,
+    role: convexValidators.platformRole,
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
