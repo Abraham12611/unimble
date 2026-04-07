@@ -84,11 +84,13 @@ export default defineSchema({
     email: v.string(),
     invitedBy: v.id("users"),
     status: v.string(),
+    expiresAt: v.optional(v.number()),
     createdAt: v.number(),
   })
     .index("by_workspace", ["workspaceId"])
     .index("by_invited_by", ["invitedBy"])
-    .index("by_workspace_and_email", ["workspaceId", "email"]),
+    .index("by_workspace_and_email", ["workspaceId", "email"])
+    .index("by_expires_at", ["expiresAt"]),
 
   operators: defineTable({
     workspaceId: v.id("workspaces"),
@@ -165,7 +167,7 @@ export default defineSchema({
     workspaceId: v.id("workspaces"),
     provider: v.string(),
     name: v.string(),
-    credentials: v.string(),
+    credentialsRef: v.optional(v.string()),
     config: v.optional(v.any()),
     status: v.optional(v.string()),
     lastUsedAt: v.optional(v.number()),
@@ -192,7 +194,8 @@ export default defineSchema({
   })
     .index("by_execution", ["executionId"])
     .index("by_status", ["status"])
-    .index("by_requested_at", ["requestedAt"]),
+    .index("by_requested_at", ["requestedAt"])
+    .index("by_execution_and_status", ["executionId", "status"]),
 
   events: defineTable({
     workspaceId: v.id("workspaces"),
@@ -206,7 +209,9 @@ export default defineSchema({
   })
     .index("by_workspace", ["workspaceId"])
     .index("by_user", ["userId"])
-    .index("by_timestamp", ["timestamp"]),
+    .index("by_timestamp", ["timestamp"])
+    .index("by_workspace_and_type", ["workspaceId", "type"])
+    .index("by_workspace_and_resource", ["workspaceId", "resourceType", "resourceId"]),
 
   learnings: defineTable({
     workspaceId: v.id("workspaces"),
