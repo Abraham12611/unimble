@@ -5,5 +5,6 @@ import "./organizations.test";
 import "./workspaces.test";
 import "./operators.test";
 import "./workflows.test";
+import "./executions.test";
 
 export {};
