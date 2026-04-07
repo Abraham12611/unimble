@@ -1,6 +1,6 @@
 import type { Id } from "./_generated/dataModel";
 import { mutation } from "./_generated/server";
-import { v } from "convex/values";
+import { convexValidators } from "./argValidators";
 import { derivePlatformRole } from "./rbac";
 
 function slugify(input: string) {
@@ -46,13 +46,13 @@ function parseHttpsUrlOrThrow(rawInput: string) {
 
 export const completeOnboarding = mutation({
   args: {
-    fullName: v.string(),
-    avatarUrl: v.string(),
-    companyName: v.string(),
-    companySize: v.string(),
-    useCase: v.string(),
-    workspaceName: v.string(),
-    inviteEmails: v.string(),
+    fullName: convexValidators.stringField,
+    avatarUrl: convexValidators.stringField,
+    companyName: convexValidators.stringField,
+    companySize: convexValidators.stringField,
+    useCase: convexValidators.stringField,
+    workspaceName: convexValidators.stringField,
+    inviteEmails: convexValidators.stringField,
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
