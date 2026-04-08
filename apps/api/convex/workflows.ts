@@ -100,6 +100,16 @@ export async function createWorkflowImpl(
 
   const now = Date.now();
 
+  if (args.operatorId) {
+    const op = await ctx.db.get(args.operatorId);
+    if (!op) {
+      throw new Error("Operator not found");
+    }
+    if (op.workspaceId !== args.workspaceId) {
+      throw new Error("Forbidden");
+    }
+  }
+
   const workflowId = await ctx.db.insert("workflows", {
     workspaceId: args.workspaceId,
     operatorId: args.operatorId,
@@ -205,6 +215,15 @@ export async function updateWorkflowImpl(
   const patch: Record<string, unknown> = { updatedAt: Date.now() };
 
   if (args.operatorId !== undefined) {
+    if (args.operatorId !== null) {
+      const op = await ctx.db.get(args.operatorId);
+      if (!op) {
+        throw new Error("Operator not found");
+      }
+      if (op.workspaceId !== wf.workspaceId) {
+        throw new Error("Forbidden");
+      }
+    }
     patch.operatorId = args.operatorId === null ? undefined : args.operatorId;
   }
 

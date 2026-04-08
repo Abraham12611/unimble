@@ -147,6 +147,128 @@ describe("workflows", () => {
     expect(missing.includes("not found")).toBe(true);
   });
 
+  test("rejects cross-workspace operator references on create and update", async () => {
+    const t = convexTest({ schema, modules });
+
+    const [workspaceAId, workflowAId, foreignOperatorId] = await t.run(async (ctx) => {
+      const now = Date.now();
+
+      const ownerId = await ctx.db.insert("users", {
+        clerkId: "clerk_owner",
+        email: "owner@example.com",
+        role: "user",
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      const workspaceAId = await ctx.db.insert("workspaces", {
+        name: "A",
+        slug: "a",
+        description: "",
+        ownerId,
+        plan: "free",
+        status: "active",
+        settings: {},
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      const workspaceBId = await ctx.db.insert("workspaces", {
+        name: "B",
+        slug: "b",
+        description: "",
+        ownerId,
+        plan: "free",
+        status: "active",
+        settings: {},
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      await ctx.db.insert("workspaceMembers", {
+        workspaceId: workspaceAId,
+        userId: ownerId,
+        role: "owner",
+        joinedAt: now,
+      });
+
+      await ctx.db.insert("workspaceMembers", {
+        workspaceId: workspaceBId,
+        userId: ownerId,
+        role: "owner",
+        joinedAt: now,
+      });
+
+      const foreignOperatorId = await ctx.db.insert("operators", {
+        workspaceId: workspaceBId,
+        type: "agent",
+        name: "Foreign Op",
+        description: "",
+        status: "active",
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      const workflowAId = await ctx.db.insert("workflows", {
+        workspaceId: workspaceAId,
+        operatorId: undefined,
+        name: "WF A",
+        description: "",
+        trigger: {},
+        steps: {},
+        status: "active",
+        version: 1,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      await ctx.db.insert("workflowVersions", {
+        workflowId: workflowAId,
+        workspaceId: workspaceAId,
+        operatorId: undefined,
+        name: "WF A",
+        description: "",
+        trigger: {},
+        steps: {},
+        status: "active",
+        version: 1,
+        createdAt: now,
+        createdBy: ownerId,
+      });
+
+      return [workspaceAId, workflowAId, foreignOperatorId] as const;
+    });
+
+    const ownerAuthed = t.withIdentity(makeIdentity({ subject: "clerk_owner" }));
+
+    const createRes = await ownerAuthed.mutation(async (ctx) => {
+      try {
+        await createWorkflowImpl(ctx, {
+          workspaceId: workspaceAId,
+          operatorId: foreignOperatorId,
+          name: "WF should fail",
+        });
+        return "ok";
+      } catch (err) {
+        return String(err);
+      }
+    });
+    expect(createRes.includes("Forbidden") || createRes.includes("Operator not found")).toBe(true);
+
+    const updateRes = await ownerAuthed.mutation(async (ctx) => {
+      try {
+        await updateWorkflowImpl(ctx, {
+          id: workflowAId,
+          operatorId: foreignOperatorId,
+        });
+        return "ok";
+      } catch (err) {
+        return String(err);
+      }
+    });
+    expect(updateRes.includes("Forbidden") || updateRes.includes("Operator not found")).toBe(true);
+  });
+
   test("member can read but cannot mutate; stranger cannot read", async () => {
     const t = convexTest({ schema, modules });
 
