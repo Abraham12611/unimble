@@ -260,7 +260,7 @@ export async function deleteOrganizationImpl(ctx: MutationCtx, args: { id: Id<"o
   const now = Date.now();
   const workspaces = await ctx.db
     .query("workspaces")
-    .filter((q) => q.eq(q.field("organizationId"), args.id))
+    .withIndex("by_organization", (q) => q.eq("organizationId", args.id))
     .collect();
 
   for (const ws of workspaces) {

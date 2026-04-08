@@ -61,6 +61,7 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_slug", ["slug"])
+    .index("by_organization", ["organizationId"])
     .index("by_owner", ["ownerId"])
     .index("by_status", ["status"])
     .index("by_owner_and_status", ["ownerId", "status"]),
