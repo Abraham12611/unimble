@@ -5,6 +5,7 @@ import type { Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
 import { normalizePlatformRole } from "./rbac";
+import { deleteWorkflowImpl } from "./workflows";
 import { workspaceValidator } from "./validators/workspace";
 
 function slugify(input: string) {
@@ -381,34 +382,7 @@ export async function deleteWorkspaceImpl(ctx: MutationCtx, args: { id: Id<"work
     .withIndex("by_workspace", (q) => q.eq("workspaceId", args.id))
     .collect();
   for (const wf of workflows) {
-    await ctx.db.delete(wf._id);
-  }
-
-  const executions = await ctx.db
-    .query("executions")
-    .withIndex("by_workspace", (q) => q.eq("workspaceId", args.id))
-    .collect();
-
-  for (const exe of executions) {
-    const steps = await ctx.db
-      .query("executionSteps")
-      .withIndex("by_execution", (q) => q.eq("executionId", exe._id))
-      .collect();
-
-    for (const step of steps) {
-      await ctx.db.delete(step._id);
-    }
-
-    const approvals = await ctx.db
-      .query("approvals")
-      .withIndex("by_execution", (q) => q.eq("executionId", exe._id))
-      .collect();
-
-    for (const approval of approvals) {
-      await ctx.db.delete(approval._id);
-    }
-
-    await ctx.db.delete(exe._id);
+    await deleteWorkflowImpl(ctx, { id: wf._id });
   }
 
   const integrations = await ctx.db
@@ -433,14 +407,6 @@ export async function deleteWorkspaceImpl(ctx: MutationCtx, args: { id: Id<"work
     .collect();
   for (const l of learnings) {
     await ctx.db.delete(l._id);
-  }
-
-  const workflowVersions = await ctx.db
-    .query("workflowVersions")
-    .withIndex("by_workspace", (q) => q.eq("workspaceId", args.id))
-    .collect();
-  for (const v of workflowVersions) {
-    await ctx.db.delete(v._id);
   }
 
   await ctx.db.delete(args.id);

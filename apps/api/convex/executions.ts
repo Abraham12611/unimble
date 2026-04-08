@@ -517,6 +517,11 @@ export async function updateExecutionStepStatusImpl(
     throw new Error("Execution not found");
   }
 
+  const terminalStatuses = new Set(["completed", "failed", "canceled"]);
+  if (terminalStatuses.has(exe.status)) {
+    throw new Error("Cannot update steps on a terminal execution");
+  }
+
   await requireWorkspaceOwner(ctx, exe.workspaceId);
 
   const status = String(args.status ?? "").trim();

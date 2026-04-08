@@ -382,6 +382,90 @@ describe("executions", () => {
     expect(stepRes.includes("Cannot add steps to a terminal execution")).toBe(true);
   });
 
+  test("updateExecutionStepStatus rejects terminal executions", async () => {
+    const t = convexTest({ schema, modules });
+
+    const [workspaceId, workflowId] = await t.run(async (ctx) => {
+      const now = Date.now();
+
+      const ownerId = await ctx.db.insert("users", {
+        clerkId: "clerk_owner",
+        email: "owner@example.com",
+        role: "user",
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      const workspaceId = await ctx.db.insert("workspaces", {
+        name: "Team",
+        slug: "team",
+        description: "",
+        ownerId,
+        plan: "free",
+        status: "active",
+        settings: {},
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      await ctx.db.insert("workspaceMembers", {
+        workspaceId,
+        userId: ownerId,
+        role: "owner",
+        joinedAt: now,
+      });
+
+      const workflowId = await ctx.db.insert("workflows", {
+        workspaceId,
+        operatorId: undefined,
+        name: "WF",
+        description: "",
+        trigger: {},
+        steps: {},
+        status: "active",
+        version: 1,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      return [workspaceId, workflowId] as const;
+    });
+
+    const ownerAuthed = t.withIdentity(makeIdentity({ subject: "clerk_owner" }));
+
+    const executionId = await ownerAuthed.mutation(async (ctx) => {
+      return await createExecutionImpl(ctx, {
+        workspaceId,
+        workflowId,
+        status: "queued",
+      });
+    });
+
+    const stepId = await ownerAuthed.mutation(async (ctx) => {
+      return await createExecutionStepImpl(ctx, {
+        executionId,
+        stepId: "step-1",
+        name: "Step",
+        type: "task",
+      });
+    });
+
+    await ownerAuthed.mutation(async (ctx) => {
+      return await cancelExecutionImpl(ctx, { id: executionId });
+    });
+
+    const updateRes = await ownerAuthed.mutation(async (ctx) => {
+      try {
+        await updateExecutionStepStatusImpl(ctx, { id: stepId, status: "completed" });
+        return "ok";
+      } catch (err) {
+        return String(err);
+      }
+    });
+
+    expect(updateRes.includes("Cannot update steps on a terminal execution")).toBe(true);
+  });
+
   test("retry rejects non-terminal executions", async () => {
     const t = convexTest({ schema, modules });
 
