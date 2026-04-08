@@ -318,6 +318,11 @@ export async function retryExecutionImpl(ctx: MutationCtx, args: { id: Id<"execu
 
   await requireWorkspaceOwner(ctx, exe.workspaceId);
 
+  const terminalStatuses = new Set(["completed", "failed", "canceled"]);
+  if (!terminalStatuses.has(exe.status)) {
+    throw new Error("Only completed, failed, or canceled executions can be retried");
+  }
+
   const now = Date.now();
 
   await ctx.db.patch(args.id, {
