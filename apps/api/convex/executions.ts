@@ -380,6 +380,11 @@ export async function createExecutionStepImpl(
 
   await requireWorkspaceOwner(ctx, exe.workspaceId);
 
+  const terminalStatuses = new Set(["completed", "failed", "canceled"]);
+  if (terminalStatuses.has(exe.status)) {
+    throw new Error("Cannot add steps to a terminal execution");
+  }
+
   const stepId = String(args.stepId ?? "").trim();
   const name = String(args.name ?? "").trim();
   const type = String(args.type ?? "").trim();
