@@ -61,6 +61,7 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_slug", ["slug"])
+    .index("by_organization", ["organizationId"])
     .index("by_owner", ["ownerId"])
     .index("by_status", ["status"])
     .index("by_owner_and_status", ["ownerId", "status"]),
@@ -121,8 +122,27 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_workspace", ["workspaceId"])
+    .index("by_operator", ["operatorId"])
+    .index("by_workspace_and_operator", ["workspaceId", "operatorId"])
     .index("by_status", ["status"])
     .index("by_workspace_and_status", ["workspaceId", "status"]),
+
+  workflowVersions: defineTable({
+    workflowId: v.id("workflows"),
+    workspaceId: v.id("workspaces"),
+    operatorId: v.optional(v.id("operators")),
+    name: v.string(),
+    description: v.optional(v.string()),
+    trigger: v.optional(v.any()),
+    steps: v.optional(v.any()),
+    status: v.optional(v.string()),
+    version: v.number(),
+    createdAt: v.number(),
+    createdBy: v.optional(v.id("users")),
+  })
+    .index("by_workflow", ["workflowId"])
+    .index("by_workspace", ["workspaceId"])
+    .index("by_workflow_and_version", ["workflowId", "version"]),
 
   executions: defineTable({
     workspaceId: v.id("workspaces"),
@@ -140,6 +160,8 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_workspace", ["workspaceId"])
+    .index("by_operator", ["operatorId"])
+    .index("by_workspace_and_operator", ["workspaceId", "operatorId"])
     .index("by_workflow", ["workflowId"])
     .index("by_status", ["status"])
     .index("by_workspace_and_status", ["workspaceId", "status"]),
