@@ -287,6 +287,11 @@ export async function cancelExecutionImpl(
 
   await requireWorkspaceOwner(ctx, exe.workspaceId);
 
+  const cancelableStatuses = new Set(["queued", "running"]);
+  if (!cancelableStatuses.has(exe.status)) {
+    throw new Error("Only queued or running executions can be canceled");
+  }
+
   const now = Date.now();
 
   await ctx.db.patch(args.id, {
