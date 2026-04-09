@@ -495,6 +495,158 @@ export const listExecutionSteps = query({
   },
 });
 
+export async function listExecutionApprovalsImpl(
+  ctx: QueryCtx,
+  args: {
+    executionId: Id<"executions">;
+    status?: string;
+  }
+) {
+  const exe = await ctx.db.get(args.executionId);
+  if (!exe) {
+    throw new Error("Execution not found");
+  }
+
+  await requireWorkspaceAccess(ctx, exe.workspaceId);
+
+  const status = args.status ? String(args.status).trim() : "";
+
+  if (status) {
+    return await ctx.db
+      .query("approvals")
+      .withIndex("by_execution_and_status", (q) =>
+        q.eq("executionId", args.executionId).eq("status", status)
+      )
+      .collect();
+  }
+
+  return await ctx.db
+    .query("approvals")
+    .withIndex("by_execution", (q) => q.eq("executionId", args.executionId))
+    .collect();
+}
+
+export const listExecutionApprovals = query({
+  args: {
+    executionId: convexValidators.executionId,
+    status: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    return await listExecutionApprovalsImpl(ctx, args);
+  },
+});
+
+export async function createExecutionApprovalImpl(
+  ctx: MutationCtx,
+  args: {
+    executionId: Id<"executions">;
+    stepId: string;
+    type: string;
+    content?: unknown;
+    status?: string;
+  }
+) {
+  const exe = await ctx.db.get(args.executionId);
+  if (!exe) {
+    throw new Error("Execution not found");
+  }
+
+  await requireWorkspaceOwner(ctx, exe.workspaceId);
+
+  const stepId = String(args.stepId ?? "").trim();
+  const type = String(args.type ?? "").trim();
+  const status = String(args.status ?? "pending").trim();
+
+  if (!stepId) {
+    throw new Error("stepId is required");
+  }
+  if (!type) {
+    throw new Error("type is required");
+  }
+  if (!status) {
+    throw new Error("status is required");
+  }
+
+  const now = Date.now();
+
+  const approvalId = await ctx.db.insert("approvals", {
+    executionId: args.executionId,
+    stepId,
+    type,
+    content: args.content,
+    status,
+    requestedAt: now,
+    respondedAt: undefined,
+    respondedBy: undefined,
+    feedback: undefined,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  return approvalId;
+}
+
+export const createExecutionApproval = mutation({
+  args: {
+    executionId: convexValidators.executionId,
+    stepId: v.string(),
+    type: v.string(),
+    content: v.optional(v.any()),
+    status: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    return await createExecutionApprovalImpl(ctx, args);
+  },
+});
+
+export async function respondExecutionApprovalImpl(
+  ctx: MutationCtx,
+  args: {
+    id: Id<"approvals">;
+    status: string;
+    feedback?: unknown;
+  }
+) {
+  const approval = await ctx.db.get(args.id);
+  if (!approval) {
+    throw new Error("Approval not found");
+  }
+
+  const exe = await ctx.db.get(approval.executionId);
+  if (!exe) {
+    throw new Error("Execution not found");
+  }
+
+  const { user } = await requireWorkspaceOwner(ctx, exe.workspaceId);
+
+  const status = String(args.status ?? "").trim();
+  if (!status) {
+    throw new Error("status is required");
+  }
+
+  const now = Date.now();
+  await ctx.db.patch(args.id, {
+    status,
+    feedback: args.feedback,
+    respondedAt: now,
+    respondedBy: user._id,
+    updatedAt: now,
+  });
+
+  return args.id;
+}
+
+export const respondExecutionApproval = mutation({
+  args: {
+    id: v.id("approvals"),
+    status: v.string(),
+    feedback: v.optional(v.any()),
+  },
+  handler: async (ctx, args) => {
+    return await respondExecutionApprovalImpl(ctx, args);
+  },
+});
+
 export async function updateExecutionStepStatusImpl(
   ctx: MutationCtx,
   args: {

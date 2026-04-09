@@ -16,3 +16,25 @@ export function useOperators(workspaceId?: string) {
 export function useWorkflows(workspaceId?: string) {
   return useQuery(anyApi.workflows.listWorkflows, workspaceId ? { workspaceId } : "skip");
 }
+
+export function useExecutions(workspaceId?: string, status?: string) {
+  return useQuery(anyApi.executions.listExecutions, workspaceId ? { workspaceId, status } : "skip");
+}
+
+export function useExecution(executionId?: string) {
+  return useQuery(anyApi.executions.getExecution, executionId ? { id: executionId } : "skip");
+}
+
+export function useExecutionSteps(executionId?: string, status?: string) {
+  return useQuery(
+    anyApi.executions.listExecutionSteps,
+    executionId ? { executionId, status } : "skip"
+  );
+}
+
+export function useExecutionApprovals(executionId?: string, status?: string) {
+  return useQuery(
+    anyApi.executions.listExecutionApprovals,
+    executionId ? { executionId, status } : "skip"
+  );
+}
