@@ -350,6 +350,15 @@ export async function retryExecutionImpl(ctx: MutationCtx, args: { id: Id<"execu
     await ctx.db.delete(s._id);
   }
 
+  const approvals = await ctx.db
+    .query("approvals")
+    .withIndex("by_execution", (q) => q.eq("executionId", args.id))
+    .collect();
+
+  for (const a of approvals) {
+    await ctx.db.delete(a._id);
+  }
+
   return args.id;
 }
 
@@ -553,6 +562,11 @@ export async function createExecutionApprovalImpl(
 
   await requireWorkspaceOwner(ctx, exe.workspaceId);
 
+  const terminalStatuses = new Set(["completed", "failed", "canceled"]);
+  if (terminalStatuses.has(exe.status)) {
+    throw new Error("Cannot add approvals to a terminal execution");
+  }
+
   const stepId = String(args.stepId ?? "").trim();
   const type = String(args.type ?? "").trim();
   const status = String(args.status ?? "pending").trim();
@@ -565,6 +579,10 @@ export async function createExecutionApprovalImpl(
   }
   if (!status) {
     throw new Error("status is required");
+  }
+
+  if (status !== "pending") {
+    throw new Error("status must be pending");
   }
 
   const now = Date.now();
@@ -592,7 +610,7 @@ export const createExecutionApproval = mutation({
     stepId: v.string(),
     type: v.string(),
     content: v.optional(v.any()),
-    status: v.optional(v.string()),
+    status: v.optional(v.literal("pending")),
   },
   handler: async (ctx, args) => {
     return await createExecutionApprovalImpl(ctx, args);
@@ -624,6 +642,18 @@ export async function respondExecutionApprovalImpl(
     throw new Error("status is required");
   }
 
+  const allowedStatuses = new Set(["approved", "rejected"]);
+  if (!allowedStatuses.has(status)) {
+    throw new Error("status must be 'approved' or 'rejected'");
+  }
+
+  if (approval.status !== "pending") {
+    if (approval.status === status) {
+      return args.id;
+    }
+    throw new Error("Approval has already been responded to");
+  }
+
   const now = Date.now();
   await ctx.db.patch(args.id, {
     status,
@@ -639,7 +669,7 @@ export async function respondExecutionApprovalImpl(
 export const respondExecutionApproval = mutation({
   args: {
     id: v.id("approvals"),
-    status: v.string(),
+    status: v.union(v.literal("approved"), v.literal("rejected")),
     feedback: v.optional(v.any()),
   },
   handler: async (ctx, args) => {

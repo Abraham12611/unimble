@@ -17,6 +17,7 @@ import {
 export function DashboardClient() {
   const workspaces = useWorkspaces();
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | undefined>(undefined);
+  const [lastActionError, setLastActionError] = useState<string | null>(null);
 
   const workspaceOptions = useMemo(() => {
     if (!workspaces) return [];
@@ -72,6 +73,16 @@ export function DashboardClient() {
   const createApproval = useMutation(anyApi.executions.createExecutionApproval);
   const respondApproval = useMutation(anyApi.executions.respondExecutionApproval);
 
+  async function runAction(fn: () => Promise<void>) {
+    setLastActionError(null);
+    try {
+      await fn();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setLastActionError(msg);
+    }
+  }
+
   return (
     <div className="flex-1 p-6">
       <div className="flex items-center justify-between">
@@ -88,6 +99,12 @@ export function DashboardClient() {
       </div>
 
       <div className="mt-6 grid gap-4">
+        {lastActionError ? (
+          <div className="rounded-[14px] border border-[#2A2A2A] bg-[#161616] p-4 text-[12px] text-[#EF4444]">
+            {lastActionError}
+          </div>
+        ) : null}
+
         <div className="rounded-[14px] border border-[#222222] bg-[#161616] p-5">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -131,13 +148,15 @@ export function DashboardClient() {
                 type="button"
                 disabled={!effectiveWorkspaceId}
                 onClick={async () => {
-                  if (!effectiveWorkspaceId) return;
-                  const now = Date.now();
-                  await createOperator({
-                    workspaceId: effectiveWorkspaceId,
-                    type: "manual",
-                    name: `Test operator ${now}`,
-                    status: "active",
+                  await runAction(async () => {
+                    if (!effectiveWorkspaceId) return;
+                    const now = Date.now();
+                    await createOperator({
+                      workspaceId: effectiveWorkspaceId,
+                      type: "manual",
+                      name: `Test operator ${now}`,
+                      status: "active",
+                    });
                   });
                 }}
                 className="h-9 rounded-[10px] border border-[#2A2A2A] bg-[#1C1C1C] px-3 text-[13px] font-medium text-[#F0F0F0] transition-colors hover:bg-[#222222] disabled:cursor-not-allowed disabled:border-[#222222] disabled:bg-[#111111] disabled:text-[#555555]"
@@ -182,14 +201,16 @@ export function DashboardClient() {
                 type="button"
                 disabled={!effectiveWorkspaceId}
                 onClick={async () => {
-                  if (!effectiveWorkspaceId) return;
-                  const now = Date.now();
-                  await createWorkflow({
-                    workspaceId: effectiveWorkspaceId,
-                    name: `Test workflow ${now}`,
-                    status: "active",
-                    steps: [],
-                    trigger: { type: "manual" },
+                  await runAction(async () => {
+                    if (!effectiveWorkspaceId) return;
+                    const now = Date.now();
+                    await createWorkflow({
+                      workspaceId: effectiveWorkspaceId,
+                      name: `Test workflow ${now}`,
+                      status: "active",
+                      steps: [],
+                      trigger: { type: "manual" },
+                    });
                   });
                 }}
                 className="h-9 rounded-[10px] border border-[#2A2A2A] bg-[#1C1C1C] px-3 text-[13px] font-medium text-[#F0F0F0] transition-colors hover:bg-[#222222] disabled:cursor-not-allowed disabled:border-[#222222] disabled:bg-[#111111] disabled:text-[#555555]"
@@ -274,15 +295,17 @@ export function DashboardClient() {
                 type="button"
                 disabled={!effectiveWorkspaceId || workflowOptions.length === 0}
                 onClick={async () => {
-                  if (!effectiveWorkspaceId) return;
-                  const workflowId = workflowOptions[0]?.id;
-                  if (!workflowId) return;
+                  await runAction(async () => {
+                    if (!effectiveWorkspaceId) return;
+                    const workflowId = workflowOptions[0]?.id;
+                    if (!workflowId) return;
 
-                  await createExecution({
-                    workspaceId: effectiveWorkspaceId,
-                    workflowId,
-                    status: "queued",
-                    input: { source: "dashboard" },
+                    await createExecution({
+                      workspaceId: effectiveWorkspaceId,
+                      workflowId,
+                      status: "queued",
+                      input: { source: "dashboard" },
+                    });
                   });
                 }}
                 className="h-9 rounded-[10px] border border-[#2A2A2A] bg-[#1C1C1C] px-3 text-[13px] font-medium text-[#F0F0F0] transition-colors hover:bg-[#222222] disabled:cursor-not-allowed disabled:border-[#222222] disabled:bg-[#111111] disabled:text-[#555555]"
@@ -294,22 +317,24 @@ export function DashboardClient() {
                 type="button"
                 disabled={!effectiveExecutionId}
                 onClick={async () => {
-                  if (!effectiveExecutionId) return;
+                  await runAction(async () => {
+                    if (!effectiveExecutionId) return;
 
-                  const stepId = (() => {
-                    const first =
-                      Array.isArray(steps) && steps.length > 0
-                        ? (steps as unknown[])[0]
-                        : undefined;
-                    const s = first as { stepId?: unknown } | undefined;
-                    return typeof s?.stepId === "string" && s.stepId.trim() ? s.stepId : "manual";
-                  })();
+                    const stepId = (() => {
+                      const first =
+                        Array.isArray(steps) && steps.length > 0
+                          ? (steps as unknown[])[0]
+                          : undefined;
+                      const s = first as { stepId?: unknown } | undefined;
+                      return typeof s?.stepId === "string" && s.stepId.trim() ? s.stepId : "manual";
+                    })();
 
-                  await createApproval({
-                    executionId: effectiveExecutionId,
-                    stepId,
-                    type: "manual",
-                    content: { source: "dashboard" },
+                    await createApproval({
+                      executionId: effectiveExecutionId,
+                      stepId,
+                      type: "manual",
+                      content: { source: "dashboard" },
+                    });
                   });
                 }}
                 className="h-9 rounded-[10px] border border-[#2A2A2A] bg-[#1C1C1C] px-3 text-[13px] font-medium text-[#F0F0F0] transition-colors hover:bg-[#222222] disabled:cursor-not-allowed disabled:border-[#222222] disabled:bg-[#111111] disabled:text-[#555555]"
@@ -333,15 +358,17 @@ export function DashboardClient() {
                 type="button"
                 disabled={!effectiveExecutionId}
                 onClick={async () => {
-                  if (!effectiveExecutionId) return;
-                  const now = Date.now();
-                  await createStep({
-                    executionId: effectiveExecutionId,
-                    stepId: `manual-${now}`,
-                    name: "Manual step",
-                    type: "manual",
-                    status: "queued",
-                    input: { source: "dashboard" },
+                  await runAction(async () => {
+                    if (!effectiveExecutionId) return;
+                    const now = Date.now();
+                    await createStep({
+                      executionId: effectiveExecutionId,
+                      stepId: `manual-${now}`,
+                      name: "Manual step",
+                      type: "manual",
+                      status: "queued",
+                      input: { source: "dashboard" },
+                    });
                   });
                 }}
                 className="h-9 rounded-[10px] border border-[#2A2A2A] bg-[#1C1C1C] px-3 text-[13px] font-medium text-[#F0F0F0] transition-colors hover:bg-[#222222] disabled:cursor-not-allowed disabled:border-[#222222] disabled:bg-[#111111] disabled:text-[#555555]"
@@ -431,9 +458,11 @@ export function DashboardClient() {
                           <button
                             type="button"
                             onClick={async () => {
-                              await respondApproval({
-                                id: String(approval._id),
-                                status: "approved",
+                              await runAction(async () => {
+                                await respondApproval({
+                                  id: String(approval._id),
+                                  status: "approved",
+                                });
                               });
                             }}
                             className="h-8 rounded-[10px] border border-[#2A2A2A] bg-[#1C1C1C] px-3 text-[12px] font-medium text-[#F0F0F0] transition-colors hover:bg-[#222222]"
@@ -443,9 +472,11 @@ export function DashboardClient() {
                           <button
                             type="button"
                             onClick={async () => {
-                              await respondApproval({
-                                id: String(approval._id),
-                                status: "rejected",
+                              await runAction(async () => {
+                                await respondApproval({
+                                  id: String(approval._id),
+                                  status: "rejected",
+                                });
                               });
                             }}
                             className="h-8 rounded-[10px] border border-[#2A2A2A] bg-[#1C1C1C] px-3 text-[12px] font-medium text-[#F0F0F0] transition-colors hover:bg-[#222222]"

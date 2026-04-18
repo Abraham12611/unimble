@@ -8,11 +8,14 @@ import {
   cancelExecutionImpl,
   createExecutionImpl,
   createExecutionStepImpl,
+  createExecutionApprovalImpl,
   getExecutionImpl,
   getExecutionStepImpl,
   listExecutionsImpl,
+  listExecutionApprovalsImpl,
   listExecutionStepsImpl,
   retryExecutionImpl,
+  respondExecutionApprovalImpl,
   updateExecutionStatusImpl,
   updateExecutionStepStatusImpl,
 } from "./executions";
@@ -649,6 +652,282 @@ describe("executions", () => {
       }
     });
     expect(runningRetryRes.includes("can be retried")).toBe(true);
+  });
+
+  test("retry clears approvals", async () => {
+    const t = convexTest({ schema, modules });
+
+    const [workspaceId, workflowId] = await t.run(async (ctx) => {
+      const now = Date.now();
+
+      const ownerId = await ctx.db.insert("users", {
+        clerkId: "clerk_owner",
+        email: "owner@example.com",
+        role: "user",
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      const workspaceId = await ctx.db.insert("workspaces", {
+        name: "Team",
+        slug: "team",
+        description: "",
+        ownerId,
+        plan: "free",
+        status: "active",
+        settings: {},
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      await ctx.db.insert("workspaceMembers", {
+        workspaceId,
+        userId: ownerId,
+        role: "owner",
+        joinedAt: now,
+      });
+
+      const workflowId = await ctx.db.insert("workflows", {
+        workspaceId,
+        operatorId: undefined,
+        name: "WF",
+        description: "",
+        trigger: {},
+        steps: {},
+        status: "active",
+        version: 1,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      return [workspaceId, workflowId] as const;
+    });
+
+    const ownerAuthed = t.withIdentity(makeIdentity({ subject: "clerk_owner" }));
+
+    const executionId = await ownerAuthed.mutation(async (ctx) => {
+      return await createExecutionImpl(ctx, {
+        workspaceId,
+        workflowId,
+        status: "queued",
+      });
+    });
+
+    await ownerAuthed.mutation(async (ctx) => {
+      return await createExecutionStepImpl(ctx, {
+        executionId,
+        stepId: "step-1",
+        name: "Step",
+        type: "task",
+      });
+    });
+
+    await ownerAuthed.mutation(async (ctx) => {
+      return await createExecutionApprovalImpl(ctx, {
+        executionId,
+        stepId: "step-1",
+        type: "manual",
+        status: "pending",
+        content: { foo: "bar" },
+      });
+    });
+
+    await ownerAuthed.mutation(async (ctx) => {
+      return await updateExecutionStatusImpl(ctx, { id: executionId, status: "canceled" });
+    });
+
+    const approvalsBeforeRetry = await ownerAuthed.query(async (ctx) => {
+      return await listExecutionApprovalsImpl(ctx, { executionId, status: "pending" });
+    });
+    expect(approvalsBeforeRetry.length).toBe(1);
+
+    await ownerAuthed.mutation(async (ctx) => {
+      return await retryExecutionImpl(ctx, { id: executionId });
+    });
+
+    const approvalsAfterRetry = await ownerAuthed.query(async (ctx) => {
+      return await listExecutionApprovalsImpl(ctx, { executionId });
+    });
+    expect(approvalsAfterRetry.length).toBe(0);
+  });
+
+  test("createExecutionApproval rejects terminal executions", async () => {
+    const t = convexTest({ schema, modules });
+
+    const [workspaceId, workflowId] = await t.run(async (ctx) => {
+      const now = Date.now();
+
+      const ownerId = await ctx.db.insert("users", {
+        clerkId: "clerk_owner",
+        email: "owner@example.com",
+        role: "user",
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      const workspaceId = await ctx.db.insert("workspaces", {
+        name: "Team",
+        slug: "team",
+        description: "",
+        ownerId,
+        plan: "free",
+        status: "active",
+        settings: {},
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      await ctx.db.insert("workspaceMembers", {
+        workspaceId,
+        userId: ownerId,
+        role: "owner",
+        joinedAt: now,
+      });
+
+      const workflowId = await ctx.db.insert("workflows", {
+        workspaceId,
+        operatorId: undefined,
+        name: "WF",
+        description: "",
+        trigger: {},
+        steps: {},
+        status: "active",
+        version: 1,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      return [workspaceId, workflowId] as const;
+    });
+
+    const ownerAuthed = t.withIdentity(makeIdentity({ subject: "clerk_owner" }));
+
+    const executionId = await ownerAuthed.mutation(async (ctx) => {
+      return await createExecutionImpl(ctx, {
+        workspaceId,
+        workflowId,
+        status: "queued",
+      });
+    });
+
+    await ownerAuthed.mutation(async (ctx) => {
+      return await updateExecutionStatusImpl(ctx, { id: executionId, status: "completed" });
+    });
+
+    const approvalRes = await ownerAuthed.mutation(async (ctx) => {
+      try {
+        await createExecutionApprovalImpl(ctx, {
+          executionId,
+          stepId: "step-1",
+          type: "manual",
+          status: "pending",
+        });
+        return "ok";
+      } catch (err) {
+        return String(err);
+      }
+    });
+
+    expect(approvalRes.includes("Cannot add approvals to a terminal execution")).toBe(true);
+  });
+
+  test("respondExecutionApproval validates status and is idempotent", async () => {
+    const t = convexTest({ schema, modules });
+
+    const [workspaceId, workflowId] = await t.run(async (ctx) => {
+      const now = Date.now();
+
+      const ownerId = await ctx.db.insert("users", {
+        clerkId: "clerk_owner",
+        email: "owner@example.com",
+        role: "user",
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      const workspaceId = await ctx.db.insert("workspaces", {
+        name: "Team",
+        slug: "team",
+        description: "",
+        ownerId,
+        plan: "free",
+        status: "active",
+        settings: {},
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      await ctx.db.insert("workspaceMembers", {
+        workspaceId,
+        userId: ownerId,
+        role: "owner",
+        joinedAt: now,
+      });
+
+      const workflowId = await ctx.db.insert("workflows", {
+        workspaceId,
+        operatorId: undefined,
+        name: "WF",
+        description: "",
+        trigger: {},
+        steps: {},
+        status: "active",
+        version: 1,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      return [workspaceId, workflowId] as const;
+    });
+
+    const ownerAuthed = t.withIdentity(makeIdentity({ subject: "clerk_owner" }));
+
+    const executionId = await ownerAuthed.mutation(async (ctx) => {
+      return await createExecutionImpl(ctx, {
+        workspaceId,
+        workflowId,
+        status: "queued",
+      });
+    });
+
+    const approvalId = await ownerAuthed.mutation(async (ctx) => {
+      return await createExecutionApprovalImpl(ctx, {
+        executionId,
+        stepId: "step-1",
+        type: "manual",
+        status: "pending",
+      });
+    });
+
+    const invalidStatusRes = await ownerAuthed.mutation(async (ctx) => {
+      try {
+        await respondExecutionApprovalImpl(ctx, { id: approvalId, status: "pending" });
+        return "ok";
+      } catch (err) {
+        return String(err);
+      }
+    });
+    expect(invalidStatusRes.includes("status must be 'approved' or 'rejected'")).toBe(true);
+
+    const approvedRes = await ownerAuthed.mutation(async (ctx) => {
+      return await respondExecutionApprovalImpl(ctx, { id: approvalId, status: "approved" });
+    });
+    expect(approvedRes).toBe(approvalId);
+
+    const approvedAgainRes = await ownerAuthed.mutation(async (ctx) => {
+      return await respondExecutionApprovalImpl(ctx, { id: approvalId, status: "approved" });
+    });
+    expect(approvedAgainRes).toBe(approvalId);
+
+    const flipRes = await ownerAuthed.mutation(async (ctx) => {
+      try {
+        await respondExecutionApprovalImpl(ctx, { id: approvalId, status: "rejected" });
+        return "ok";
+      } catch (err) {
+        return String(err);
+      }
+    });
+    expect(flipRes.includes("Approval has already been responded to")).toBe(true);
   });
 
   test("member can read but cannot mutate; stranger cannot read", async () => {
