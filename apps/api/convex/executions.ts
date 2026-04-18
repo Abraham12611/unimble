@@ -223,6 +223,12 @@ export async function updateExecutionStatusImpl(
 
   await requireWorkspaceOwner(ctx, exe.workspaceId);
 
+  const terminalStatuses = new Set(["completed", "failed", "canceled"]);
+
+  if (terminalStatuses.has(exe.status)) {
+    throw new Error("Cannot update status of a terminal execution; use retryExecution instead");
+  }
+
   const nextStatus = String(args.status ?? "").trim();
   if (!nextStatus) {
     throw new Error("status is required");
@@ -239,7 +245,6 @@ export async function updateExecutionStatusImpl(
   if (args.error !== undefined) patch.error = args.error;
   if (args.cost !== undefined) patch.cost = args.cost;
 
-  const terminalStatuses = new Set(["completed", "failed", "canceled"]);
   const isTerminal = terminalStatuses.has(nextStatus);
 
   if (isTerminal) {

@@ -195,7 +195,12 @@ describe("executions", () => {
     expect(completed.completedAt).toBeTypeOf("number");
     expect(completed.duration).toBeTypeOf("number");
 
-    // Cancel then retry should reset status and clear steps
+    // Retry the completed execution to get back to a non-terminal state,
+    // then move to running so we can test cancel
+    await ownerAuthed.mutation(async (ctx) => {
+      return await retryExecutionImpl(ctx, { id: executionId });
+    });
+
     await ownerAuthed.mutation(async (ctx) => {
       return await updateExecutionStatusImpl(ctx, {
         id: executionId,
@@ -228,6 +233,79 @@ describe("executions", () => {
     });
 
     expect(stepsAfterRetry.length).toBe(0);
+  });
+
+  test("updateExecutionStatus rejects transitions out of terminal states", async () => {
+    const t = convexTest({ schema, modules });
+
+    const [workspaceId, workflowId] = await t.run(async (ctx) => {
+      const now = Date.now();
+
+      const ownerId = await ctx.db.insert("users", {
+        clerkId: "clerk_owner",
+        email: "owner@example.com",
+        role: "user",
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      const workspaceId = await ctx.db.insert("workspaces", {
+        name: "Team",
+        slug: "team",
+        description: "",
+        ownerId,
+        plan: "free",
+        status: "active",
+        settings: {},
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      await ctx.db.insert("workspaceMembers", {
+        workspaceId,
+        userId: ownerId,
+        role: "owner",
+        joinedAt: now,
+      });
+
+      const workflowId = await ctx.db.insert("workflows", {
+        workspaceId,
+        operatorId: undefined,
+        name: "WF",
+        description: "",
+        trigger: {},
+        steps: {},
+        status: "active",
+        version: 1,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      return [workspaceId, workflowId] as const;
+    });
+
+    const ownerAuthed = t.withIdentity(makeIdentity({ subject: "clerk_owner" }));
+
+    for (const terminalStatus of ["completed", "failed", "canceled"] as const) {
+      const executionId = await ownerAuthed.mutation(async (ctx) => {
+        return await createExecutionImpl(ctx, {
+          workspaceId,
+          workflowId,
+          status: terminalStatus,
+        });
+      });
+
+      const updateRes = await ownerAuthed.mutation(async (ctx) => {
+        try {
+          await updateExecutionStatusImpl(ctx, { id: executionId, status: "running" });
+          return "ok";
+        } catch (err) {
+          return String(err);
+        }
+      });
+
+      expect(updateRes.includes("Cannot update status of a terminal execution")).toBe(true);
+    }
   });
 
   test("cancel rejects terminal executions", async () => {
