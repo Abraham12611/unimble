@@ -278,4 +278,133 @@ describe("workspaces", () => {
     });
     expect(deleteRes.includes("Forbidden")).toBe(true);
   });
+
+  test("cross-workspace data isolation: no leaks between workspaces", async () => {
+    const t = convexTest({ schema, modules });
+
+    // Create two users, each with their own workspace
+    const [wsA, wsB] = await t.run(async (ctx) => {
+      const now = Date.now();
+
+      const userA = await ctx.db.insert("users", {
+        clerkId: "clerk_alice",
+        email: "alice@example.com",
+        role: "user",
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      const userB = await ctx.db.insert("users", {
+        clerkId: "clerk_bob",
+        email: "bob@example.com",
+        role: "user",
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      const wsA = await ctx.db.insert("workspaces", {
+        name: "Alice Workspace",
+        slug: "alice-ws",
+        description: "",
+        ownerId: userA,
+        plan: "free",
+        status: "active",
+        settings: {},
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      const wsB = await ctx.db.insert("workspaces", {
+        name: "Bob Workspace",
+        slug: "bob-ws",
+        description: "",
+        ownerId: userB,
+        plan: "free",
+        status: "active",
+        settings: {},
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      await ctx.db.insert("workspaceMembers", {
+        workspaceId: wsA,
+        userId: userA,
+        role: "owner",
+        joinedAt: now,
+      });
+
+      await ctx.db.insert("workspaceMembers", {
+        workspaceId: wsB,
+        userId: userB,
+        role: "owner",
+        joinedAt: now,
+      });
+
+      return [wsA, wsB] as const;
+    });
+
+    const alice = t.withIdentity(makeIdentity({ subject: "clerk_alice" }));
+    const bob = t.withIdentity(makeIdentity({ subject: "clerk_bob" }));
+
+    // Alice cannot read Bob's workspace
+    const aliceReadBob = await alice.query(async (ctx) => {
+      try {
+        await getWorkspaceImpl(ctx, { id: wsB });
+        return "ok";
+      } catch (err) {
+        return String(err);
+      }
+    });
+    expect(aliceReadBob.includes("Forbidden")).toBe(true);
+
+    // Bob cannot read Alice's workspace
+    const bobReadAlice = await bob.query(async (ctx) => {
+      try {
+        await getWorkspaceImpl(ctx, { id: wsA });
+        return "ok";
+      } catch (err) {
+        return String(err);
+      }
+    });
+    expect(bobReadAlice.includes("Forbidden")).toBe(true);
+
+    // Alice's workspace list does not include Bob's workspace
+    const aliceList = await alice.query(async (ctx) => {
+      return await listWorkspacesImpl(ctx);
+    });
+    expect(aliceList.some((ws) => ws._id === wsA)).toBe(true);
+    expect(aliceList.some((ws) => ws._id === wsB)).toBe(false);
+
+    // Bob's workspace list does not include Alice's workspace
+    const bobList = await bob.query(async (ctx) => {
+      return await listWorkspacesImpl(ctx);
+    });
+    expect(bobList.some((ws) => ws._id === wsB)).toBe(true);
+    expect(bobList.some((ws) => ws._id === wsA)).toBe(false);
+
+    // Bob cannot mutate Alice's workspace
+    const bobUpdateAlice = await bob.mutation(async (ctx) => {
+      try {
+        await updateWorkspaceImpl(ctx, { id: wsA, name: "Hacked" });
+        return "ok";
+      } catch (err) {
+        return String(err);
+      }
+    });
+    expect(bobUpdateAlice.includes("Forbidden")).toBe(true);
+
+    // Bob cannot invite to Alice's workspace
+    const bobInviteAlice = await bob.mutation(async (ctx) => {
+      try {
+        await inviteWorkspaceMemberImpl(ctx, {
+          workspaceId: wsA,
+          email: "eve@example.com",
+        });
+        return "ok";
+      } catch (err) {
+        return String(err);
+      }
+    });
+    expect(bobInviteAlice.includes("Forbidden")).toBe(true);
+  });
 });
