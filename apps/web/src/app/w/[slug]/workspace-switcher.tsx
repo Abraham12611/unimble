@@ -77,13 +77,12 @@ export function WorkspaceSwitcher() {
             ) : (
               filtered.map((ws) => {
                 const isActive = ws.slug === workspace?.slug;
-                const wsTyped = ws as { _id: string; name: string; slug: string };
                 return (
                   <button
-                    key={wsTyped._id}
+                    key={ws._id}
                     type="button"
                     onClick={() => {
-                      switchWorkspace(wsTyped.slug);
+                      switchWorkspace(ws.slug);
                       setOpen(false);
                       setSearch("");
                     }}
@@ -93,7 +92,7 @@ export function WorkspaceSwitcher() {
                         : "text-[#888888] hover:bg-[#1C1C1C] hover:text-[#F0F0F0]"
                     }`}
                   >
-                    <span className="truncate">{wsTyped.name}</span>
+                    <span className="truncate">{ws.name}</span>
                     {isActive && <Check size={14} className="shrink-0 text-[#22C55E]" />}
                   </button>
                 );

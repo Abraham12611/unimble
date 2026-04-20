@@ -4,15 +4,23 @@ import { createContext, useCallback, useContext, useEffect, useMemo, type ReactN
 import { useParams, useRouter } from "next/navigation";
 import { useWorkspaces } from "./convexHooks";
 
-type Workspace = {
+/**
+ * Workspace shape as returned by Convex queries.
+ * Uses `string` for IDs since Convex `Id<>` serializes to string on the client.
+ */
+export type Workspace = {
   _id: string;
+  _creationTime: number;
   name: string;
   slug: string;
   organizationId?: string;
   ownerId: string;
+  description?: string;
   plan?: string;
   status?: string;
-  settings?: unknown;
+  settings?: Record<string, unknown>;
+  createdAt: number;
+  updatedAt: number;
 };
 
 type WorkspaceContextValue = {
@@ -43,6 +51,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const slug = typeof params?.slug === "string" ? params.slug : undefined;
 
   const allWorkspaces = useWorkspaces();
+  // Convex Id<> serializes to string on the client, so this cast is safe.
+  // The Workspace type mirrors the Convex schema fields.
   const workspaces = useMemo(() => {
     if (!allWorkspaces) return undefined;
     return allWorkspaces as unknown as Workspace[];

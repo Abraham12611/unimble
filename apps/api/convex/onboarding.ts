@@ -168,7 +168,6 @@ export const completeOnboarding = mutation({
         ...(avatarUrl ? { avatarUrl } : {}),
         imageUrl: avatarUrl ?? existingUser.imageUrl ?? identity.pictureUrl ?? undefined,
         role: platformRole,
-        onboarding: onboardingPayload,
         updatedAt: now,
       });
 
@@ -247,6 +246,7 @@ export const completeOnboarding = mutation({
       slug,
       ownerId: userId,
       plan: "free",
+      status: "active",
       settings: {
         useCase: args.useCase,
         companyName,

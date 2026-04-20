@@ -125,7 +125,19 @@ describe("workspaces", () => {
         updatedAt: now,
       });
 
+      const orgId = await ctx.db.insert("organizations", {
+        name: "Team Org",
+        slug: "team-org",
+        ownerId,
+        plan: "free",
+        status: "active",
+        settings: {},
+        createdAt: now,
+        updatedAt: now,
+      });
+
       const workspaceId = await ctx.db.insert("workspaces", {
+        organizationId: orgId,
         name: "Team",
         slug: "team",
         description: "",
@@ -215,7 +227,19 @@ describe("workspaces", () => {
         updatedAt: now,
       });
 
+      const orgId = await ctx.db.insert("organizations", {
+        name: "Private Org",
+        slug: "private-org",
+        ownerId,
+        plan: "free",
+        status: "active",
+        settings: {},
+        createdAt: now,
+        updatedAt: now,
+      });
+
       const workspaceId = await ctx.db.insert("workspaces", {
+        organizationId: orgId,
         name: "Private",
         slug: "private",
         description: "",
@@ -282,7 +306,7 @@ describe("workspaces", () => {
   test("cross-workspace data isolation: no leaks between workspaces", async () => {
     const t = convexTest({ schema, modules });
 
-    // Create two users, each with their own workspace
+    // Create two users, each with their own org and workspace
     const [wsA, wsB] = await t.run(async (ctx) => {
       const now = Date.now();
 
@@ -302,7 +326,30 @@ describe("workspaces", () => {
         updatedAt: now,
       });
 
+      const orgA = await ctx.db.insert("organizations", {
+        name: "Alice Org",
+        slug: "alice-org",
+        ownerId: userA,
+        plan: "free",
+        status: "active",
+        settings: {},
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      const orgB = await ctx.db.insert("organizations", {
+        name: "Bob Org",
+        slug: "bob-org",
+        ownerId: userB,
+        plan: "free",
+        status: "active",
+        settings: {},
+        createdAt: now,
+        updatedAt: now,
+      });
+
       const wsA = await ctx.db.insert("workspaces", {
+        organizationId: orgA,
         name: "Alice Workspace",
         slug: "alice-ws",
         description: "",
@@ -315,6 +362,7 @@ describe("workspaces", () => {
       });
 
       const wsB = await ctx.db.insert("workspaces", {
+        organizationId: orgB,
         name: "Bob Workspace",
         slug: "bob-ws",
         description: "",
