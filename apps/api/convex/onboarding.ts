@@ -168,7 +168,6 @@ export const completeOnboarding = mutation({
         ...(avatarUrl ? { avatarUrl } : {}),
         imageUrl: avatarUrl ?? existingUser.imageUrl ?? identity.pictureUrl ?? undefined,
         role: platformRole,
-        onboarding: onboardingPayload,
         updatedAt: now,
       });
 
@@ -181,6 +180,44 @@ export const completeOnboarding = mutation({
 
     const rawWorkspaceName = workspaceName || companyName || "Workspace";
 
+    // --- Create organization first ---
+    const orgSlugBase = slugify(companyName || rawWorkspaceName);
+    let orgSlug = orgSlugBase;
+
+    let orgSlugFound = false;
+    for (let i = 0; i < 25; i += 1) {
+      const existingOrg = await ctx.db
+        .query("organizations")
+        .withIndex("by_slug", (q) => q.eq("slug", orgSlug))
+        .unique();
+
+      if (!existingOrg) {
+        orgSlugFound = true;
+        break;
+      }
+
+      orgSlug = `${orgSlugBase}-${i + 2}`;
+    }
+
+    if (!orgSlugFound) {
+      throw new Error("Could not generate a unique organization slug after 25 attempts");
+    }
+
+    const organizationId = await ctx.db.insert("organizations", {
+      name: companyName || rawWorkspaceName,
+      slug: orgSlug,
+      ownerId: userId,
+      plan: "free",
+      status: "active",
+      settings: {
+        companySize: args.companySize,
+        useCase: args.useCase,
+      },
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    // --- Create workspace under the organization ---
     const slugBase = slugify(rawWorkspaceName);
     let slug = slugBase;
 
@@ -204,10 +241,12 @@ export const completeOnboarding = mutation({
     }
 
     const workspaceId = await ctx.db.insert("workspaces", {
+      organizationId,
       name: rawWorkspaceName,
       slug,
       ownerId: userId,
       plan: "free",
+      status: "active",
       settings: {
         useCase: args.useCase,
         companyName,
