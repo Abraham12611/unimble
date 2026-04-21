@@ -31,6 +31,20 @@ export default function InviteAcceptPage() {
     }
   }
 
+  // Friendly error messages for common cases
+  function getErrorDisplay(msg: string): string {
+    if (msg.includes("Not authenticated")) {
+      return "You need to sign in before accepting this invitation.";
+    }
+    if (msg.includes("Invite not found")) {
+      return "This invitation was not found. It may have already been accepted or canceled.";
+    }
+    if (msg.includes("Invite expired")) {
+      return "This invitation has expired. Please ask the workspace owner to send a new one.";
+    }
+    return msg;
+  }
+
   // Show accept button — user clicks to accept
   if (!accepted && !errorMessage) {
     return (
@@ -82,6 +96,11 @@ export default function InviteAcceptPage() {
   }
 
   // Error state
+  const isAuthError = errorMessage?.includes("Not authenticated") ?? false;
+  const friendlyError = errorMessage
+    ? getErrorDisplay(errorMessage)
+    : "The invitation may have expired or already been used.";
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#090909] p-6">
       <div className="w-full max-w-sm space-y-4 text-center">
@@ -89,17 +108,28 @@ export default function InviteAcceptPage() {
           <XCircle size={48} weight="fill" className="text-[#EF4444]" />
         </div>
         <div className="text-[15px] font-medium text-[#F0F0F0]">Could not accept invitation</div>
-        <div className="text-[12px] text-[#888888]">
-          {errorMessage ?? "The invitation may have expired or already been used."}
-        </div>
-        <button
-          type="button"
-          onClick={() => router.push("/dashboard")}
-          className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#2A2A2A] bg-[#1C1C1C] px-4 py-2 text-[13px] font-medium text-[#F0F0F0] transition-colors hover:bg-[#222222]"
-        >
-          <span>Go to Dashboard</span>
-          <ArrowRight size={14} />
-        </button>
+        <div className="text-[12px] text-[#888888]">{friendlyError}</div>
+        {isAuthError ? (
+          <button
+            type="button"
+            onClick={() =>
+              router.push(`/sign-in?redirect_url=${encodeURIComponent(`/invite/${workspaceId}`)}`)
+            }
+            className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#2A2A2A] bg-[#1C1C1C] px-4 py-2 text-[13px] font-medium text-[#F0F0F0] transition-colors hover:bg-[#222222]"
+          >
+            <span>Sign In</span>
+            <ArrowRight size={14} />
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => router.push("/dashboard")}
+            className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#2A2A2A] bg-[#1C1C1C] px-4 py-2 text-[13px] font-medium text-[#F0F0F0] transition-colors hover:bg-[#222222]"
+          >
+            <span>Go to Dashboard</span>
+            <ArrowRight size={14} />
+          </button>
+        )}
       </div>
     </div>
   );

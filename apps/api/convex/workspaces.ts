@@ -57,6 +57,7 @@ async function requireWorkspaceAccess(ctx: QueryCtx | MutationCtx, workspaceId: 
   const isOwner = workspace.ownerId === user._id;
 
   let isMember = false;
+  let memberRole: string | undefined;
   if (!isAdmin && !isOwner) {
     const membership = await ctx.db
       .query("workspaceMembers")
@@ -65,18 +66,37 @@ async function requireWorkspaceAccess(ctx: QueryCtx | MutationCtx, workspaceId: 
       )
       .unique();
     isMember = Boolean(membership);
+    memberRole = membership?.role;
 
     if (!isMember) {
       throw new Error("Forbidden");
     }
+  } else if (isOwner) {
+    memberRole = "owner";
   }
 
-  return { workspace, user, isAdmin, isOwner, isMember };
+  return { workspace, user, isAdmin, isOwner, isMember, memberRole };
 }
 
 async function requireWorkspaceOwner(ctx: QueryCtx | MutationCtx, workspaceId: Id<"workspaces">) {
   const access = await requireWorkspaceAccess(ctx, workspaceId);
   if (!access.isAdmin && !access.isOwner) {
+    throw new Error("Forbidden");
+  }
+
+  return access;
+}
+
+/**
+ * Requires workspace owner, workspace admin role, or platform creator.
+ * Use for team management operations (invite, remove members).
+ */
+async function requireWorkspaceOwnerOrAdmin(
+  ctx: QueryCtx | MutationCtx,
+  workspaceId: Id<"workspaces">
+) {
+  const access = await requireWorkspaceAccess(ctx, workspaceId);
+  if (!access.isAdmin && !access.isOwner && access.memberRole !== "admin") {
     throw new Error("Forbidden");
   }
 
@@ -442,7 +462,7 @@ export async function inviteWorkspaceMemberImpl(
   ctx: MutationCtx,
   args: { workspaceId: Id<"workspaces">; email: string; expiresAt?: number | null }
 ) {
-  const { user } = await requireWorkspaceOwner(ctx, args.workspaceId);
+  const { user } = await requireWorkspaceOwnerOrAdmin(ctx, args.workspaceId);
 
   const email = normalizeEmailOrThrow(args.email);
   const now = Date.now();
@@ -641,7 +661,7 @@ export async function removeWorkspaceMemberImpl(
   ctx: MutationCtx,
   args: { workspaceId: Id<"workspaces">; userId: Id<"users"> }
 ) {
-  const { workspace } = await requireWorkspaceOwner(ctx, args.workspaceId);
+  const { workspace } = await requireWorkspaceOwnerOrAdmin(ctx, args.workspaceId);
 
   if (args.userId === workspace.ownerId) {
     throw new Error("Cannot remove owner");

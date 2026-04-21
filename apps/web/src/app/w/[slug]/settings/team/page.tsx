@@ -235,8 +235,8 @@ export default function TeamPage() {
         )}
       </div>
 
-      {/* Pending invitations — only show when there are actual pending invites */}
-      {pendingInvites.length > 0 && (
+      {/* Pending invitations — only show to owners/admins when there are actual pending invites */}
+      {canManageTeam && pendingInvites.length > 0 && (
         <div className="rounded-[14px] border border-[#222222] bg-[#161616]">
           <div className="border-b border-[#222222] px-5 py-3">
             <div className="text-[15px] font-medium text-[#F0F0F0]">
