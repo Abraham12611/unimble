@@ -57,6 +57,7 @@ async function requireWorkspaceAccess(ctx: QueryCtx | MutationCtx, workspaceId: 
   const isOwner = workspace.ownerId === user._id;
 
   let isMember = false;
+  let memberRole: string | undefined;
   if (!isAdmin && !isOwner) {
     const membership = await ctx.db
       .query("workspaceMembers")
@@ -65,18 +66,37 @@ async function requireWorkspaceAccess(ctx: QueryCtx | MutationCtx, workspaceId: 
       )
       .unique();
     isMember = Boolean(membership);
+    memberRole = membership?.role;
 
     if (!isMember) {
       throw new Error("Forbidden");
     }
+  } else if (isOwner) {
+    memberRole = "owner";
   }
 
-  return { workspace, user, isAdmin, isOwner, isMember };
+  return { workspace, user, isAdmin, isOwner, isMember, memberRole };
 }
 
 async function requireWorkspaceOwner(ctx: QueryCtx | MutationCtx, workspaceId: Id<"workspaces">) {
   const access = await requireWorkspaceAccess(ctx, workspaceId);
   if (!access.isAdmin && !access.isOwner) {
+    throw new Error("Forbidden");
+  }
+
+  return access;
+}
+
+/**
+ * Requires workspace owner, workspace admin role, or platform creator.
+ * Use for team management operations (invite, remove members).
+ */
+async function requireWorkspaceOwnerOrAdmin(
+  ctx: QueryCtx | MutationCtx,
+  workspaceId: Id<"workspaces">
+) {
+  const access = await requireWorkspaceAccess(ctx, workspaceId);
+  if (!access.isAdmin && !access.isOwner && access.memberRole !== "admin") {
     throw new Error("Forbidden");
   }
 
@@ -442,7 +462,7 @@ export async function inviteWorkspaceMemberImpl(
   ctx: MutationCtx,
   args: { workspaceId: Id<"workspaces">; email: string; expiresAt?: number | null }
 ) {
-  const { user } = await requireWorkspaceOwner(ctx, args.workspaceId);
+  const { user } = await requireWorkspaceOwnerOrAdmin(ctx, args.workspaceId);
 
   const email = normalizeEmailOrThrow(args.email);
   const now = Date.now();
@@ -454,20 +474,27 @@ export async function inviteWorkspaceMemberImpl(
     )
     .unique();
 
-  if (existing && existing.status === "pending") {
-    return existing._id;
+  // Only short-circuit if the existing invite is both pending AND not expired
+  const isActiveAndPending =
+    existing?.status === "pending" && (!existing.expiresAt || existing.expiresAt >= now);
+
+  if (isActiveAndPending) {
+    return existing!._id;
   }
 
   if (existing) {
     await ctx.db.delete(existing._id);
   }
 
+  const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+  const defaultExpiresAt = now + SEVEN_DAYS_MS;
+
   const inviteId = await ctx.db.insert("workspaceInvites", {
     workspaceId: args.workspaceId,
     email,
     invitedBy: user._id,
     status: "pending",
-    expiresAt: args.expiresAt === null ? undefined : args.expiresAt,
+    expiresAt: args.expiresAt === null ? undefined : (args.expiresAt ?? defaultExpiresAt),
     createdAt: now,
   });
 
@@ -489,13 +516,17 @@ export async function listWorkspaceInvitesImpl(
   ctx: QueryCtx,
   args: { workspaceId: Id<"workspaces"> }
 ) {
-  await requireWorkspaceOwner(ctx, args.workspaceId);
+  await requireWorkspaceAccess(ctx, args.workspaceId);
 
-  return await ctx.db
+  const now = Date.now();
+  const all = await ctx.db
     .query("workspaceInvites")
     .withIndex("by_workspace", (q) => q.eq("workspaceId", args.workspaceId))
     .order("desc")
     .collect();
+
+  // Exclude invites whose expiry has passed
+  return all.filter((inv) => !inv.expiresAt || inv.expiresAt >= now);
 }
 
 export const listWorkspaceInvites = query({
@@ -591,11 +622,54 @@ export const listWorkspaceMembers = query({
   },
 });
 
+/**
+ * Lists workspace members enriched with user profile data (name, email, avatar).
+ */
+export async function listWorkspaceMembersWithProfilesImpl(
+  ctx: QueryCtx,
+  args: { workspaceId: Id<"workspaces"> }
+) {
+  await requireWorkspaceAccess(ctx, args.workspaceId);
+
+  const members = await ctx.db
+    .query("workspaceMembers")
+    .withIndex("by_workspace", (q) => q.eq("workspaceId", args.workspaceId))
+    .collect();
+
+  const enriched = [];
+  for (const member of members) {
+    const user = await ctx.db.get(member.userId);
+    enriched.push({
+      ...member,
+      user: user
+        ? {
+            email: user.email,
+            name: user.name ?? user.firstName ?? undefined,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            avatarUrl: user.avatarUrl ?? user.imageUrl ?? undefined,
+          }
+        : null,
+    });
+  }
+
+  return enriched;
+}
+
+export const listWorkspaceMembersWithProfiles = query({
+  args: {
+    workspaceId: convexValidators.workspaceId,
+  },
+  handler: async (ctx, args) => {
+    return await listWorkspaceMembersWithProfilesImpl(ctx, args);
+  },
+});
+
 export async function removeWorkspaceMemberImpl(
   ctx: MutationCtx,
   args: { workspaceId: Id<"workspaces">; userId: Id<"users"> }
 ) {
-  const { workspace } = await requireWorkspaceOwner(ctx, args.workspaceId);
+  const { workspace } = await requireWorkspaceOwnerOrAdmin(ctx, args.workspaceId);
 
   if (args.userId === workspace.ownerId) {
     throw new Error("Cannot remove owner");
