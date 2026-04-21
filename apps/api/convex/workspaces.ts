@@ -514,11 +514,15 @@ export async function listWorkspaceInvitesImpl(
 ) {
   await requireWorkspaceAccess(ctx, args.workspaceId);
 
-  return await ctx.db
+  const now = Date.now();
+  const all = await ctx.db
     .query("workspaceInvites")
     .withIndex("by_workspace", (q) => q.eq("workspaceId", args.workspaceId))
     .order("desc")
     .collect();
+
+  // Exclude invites whose expiry has passed
+  return all.filter((inv) => !inv.expiresAt || inv.expiresAt >= now);
 }
 
 export const listWorkspaceInvites = query({

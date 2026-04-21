@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { anyApi } from "convex/server";
 import { useMutation, useQuery } from "convex/react";
-import { UserPlus, Trash } from "@phosphor-icons/react";
+import { UserPlus, Trash, Copy, CheckCircle } from "@phosphor-icons/react";
 import { useWorkspaceContext } from "@/lib/workspace-context";
 import { useCurrentUser } from "@/lib/convexHooks";
 
@@ -68,6 +68,7 @@ export default function TeamPage() {
   const [inviting, setInviting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
+  const [copiedInviteId, setCopiedInviteId] = useState<string | null>(null);
 
   async function handleInvite() {
     if (!workspaceId || !inviteEmail.trim()) return;
@@ -244,19 +245,52 @@ export default function TeamPage() {
             </div>
           </div>
           <div className="divide-y divide-[#222222]">
-            {pendingInvites.map((invite) => (
-              <div key={invite._id} className="flex items-center justify-between px-5 py-3">
-                <div>
-                  <div className="text-[13px] text-[#F0F0F0]">{invite.email}</div>
-                  <div className="mt-0.5 text-[12px] text-[#555555]">
-                    Sent {new Date(invite.createdAt).toLocaleDateString()}
+            {pendingInvites.map((invite) => {
+              const inviteLink = `${typeof window !== "undefined" ? window.location.origin : ""}/invite/${workspaceId}`;
+              const isCopied = copiedInviteId === invite._id;
+
+              return (
+                <div key={invite._id} className="flex items-center justify-between px-5 py-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[13px] text-[#F0F0F0]">{invite.email}</div>
+                    <div className="mt-0.5 text-[12px] text-[#555555]">
+                      Sent {new Date(invite.createdAt).toLocaleDateString()}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(inviteLink);
+                          setCopiedInviteId(invite._id);
+                          setTimeout(() => setCopiedInviteId(null), 2000);
+                        } catch {
+                          // Fallback: select text in a temporary input
+                        }
+                      }}
+                      title="Copy invite link"
+                      className="flex items-center gap-1 rounded-[6px] border border-[#2A2A2A] bg-[#1C1C1C] px-2 py-1 text-[11px] font-medium text-[#888888] transition-colors hover:bg-[#222222] hover:text-[#F0F0F0]"
+                    >
+                      {isCopied ? (
+                        <>
+                          <CheckCircle size={12} className="text-[#22C55E]" />
+                          <span className="text-[#22C55E]">Copied</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy size={12} />
+                          <span>Copy link</span>
+                        </>
+                      )}
+                    </button>
+                    <span className="rounded-[6px] bg-[rgba(245,158,11,0.12)] px-2 py-0.5 text-[12px] font-medium text-[#F59E0B]">
+                      pending
+                    </span>
                   </div>
                 </div>
-                <span className="rounded-[6px] bg-[rgba(245,158,11,0.12)] px-2 py-0.5 text-[12px] font-medium text-[#F59E0B]">
-                  pending
-                </span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
