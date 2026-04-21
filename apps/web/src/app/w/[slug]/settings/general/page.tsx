@@ -1,11 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { anyApi } from "convex/server";
 import { useMutation } from "convex/react";
 import { FloppyDisk } from "@phosphor-icons/react";
 import { useWorkspaceContext, type Workspace } from "@/lib/workspace-context";
 import { useCurrentUser } from "@/lib/convexHooks";
+
+const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+function slugify(input: string): string {
+  return input
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
 
 export default function GeneralSettingsPage() {
   const { workspace } = useWorkspaceContext();
@@ -16,30 +27,33 @@ export default function GeneralSettingsPage() {
   const isOwner = workspace?.ownerId === currentUser?._id;
   const canEdit = isCreator || isOwner;
 
-  const [name, setName] = useState(workspace?.name ?? "");
-  const [description, setDescription] = useState(
-    (workspace as Workspace | null)?.description ?? ""
-  );
-  const [slug, setSlug] = useState(workspace?.slug ?? "");
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [saveSuccess, setSaveSuccess] = useState(false);
-
-  // Sync form when workspace loads
   const wsId = workspace?._id;
   const wsName = workspace?.name;
   const wsDesc = (workspace as Workspace | null)?.description;
   const wsSlug = workspace?.slug;
 
-  // Reset form if workspace changes
-  if (wsId && name === "" && wsName) {
-    setName(wsName);
-    setDescription(wsDesc ?? "");
-    setSlug(wsSlug ?? "");
-  }
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [slug, setSlug] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // Sync form fields when workspace identity changes (initial load or switch)
+  useEffect(() => {
+    if (wsId) {
+      setName(wsName ?? "");
+      setDescription(wsDesc ?? "");
+      setSlug(wsSlug ?? "");
+    }
+  }, [wsId, wsName, wsDesc, wsSlug]);
+
+  const slugValid = slug === "" || SLUG_PATTERN.test(slug);
+  const hasChanges =
+    name !== (wsName ?? "") || description !== (wsDesc ?? "") || slug !== (wsSlug ?? "");
 
   async function handleSave() {
-    if (!wsId || !canEdit) return;
+    if (!wsId || !canEdit || !slugValid) return;
     setSaving(true);
     setSaveError(null);
     setSaveSuccess(false);
@@ -58,8 +72,6 @@ export default function GeneralSettingsPage() {
       setSaving(false);
     }
   }
-
-  const hasChanges = name !== wsName || description !== (wsDesc ?? "") || slug !== wsSlug;
 
   return (
     <div className="space-y-6">
@@ -120,13 +132,22 @@ export default function GeneralSettingsPage() {
                 id="ws-slug"
                 type="text"
                 value={slug}
-                onChange={(e) => setSlug(e.target.value)}
+                onChange={(e) => setSlug(slugify(e.target.value))}
                 disabled={!canEdit}
                 placeholder="my-workspace"
-                className="flex-1 rounded-r-[6px] border border-[#2A2A2A] bg-[#1A1A1A] px-3 py-2 text-[13px] text-[#F0F0F0] outline-none placeholder:text-[#555555] focus:border-[#3A3A3A] disabled:cursor-not-allowed disabled:text-[#555555]"
+                className={`flex-1 rounded-r-[6px] border bg-[#1A1A1A] px-3 py-2 text-[13px] text-[#F0F0F0] outline-none placeholder:text-[#555555] disabled:cursor-not-allowed disabled:text-[#555555] ${
+                  !slugValid
+                    ? "border-[rgba(239,68,68,0.4)] focus:border-[rgba(239,68,68,0.6)]"
+                    : "border-[#2A2A2A] focus:border-[#3A3A3A]"
+                }`}
               />
             </div>
-            {slug !== wsSlug && (
+            {!slugValid && slug !== "" && (
+              <p className="mt-1 text-[11px] text-[#EF4444]">
+                URL must contain only lowercase letters, numbers, and hyphens.
+              </p>
+            )}
+            {slugValid && slug !== (wsSlug ?? "") && slug !== "" && (
               <p className="mt-1 text-[11px] text-[#F59E0B]">
                 Changing the URL will break existing links and bookmarks.
               </p>
@@ -140,7 +161,7 @@ export default function GeneralSettingsPage() {
           <button
             type="button"
             onClick={handleSave}
-            disabled={saving || !hasChanges}
+            disabled={saving || !hasChanges || !slugValid}
             className="flex items-center gap-1.5 rounded-[6px] border border-[#2A2A2A] bg-[#1C1C1C] px-4 py-2 text-[13px] font-medium text-[#F0F0F0] transition-colors hover:bg-[#222222] disabled:cursor-not-allowed disabled:text-[#555555]"
           >
             <FloppyDisk size={14} />

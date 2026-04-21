@@ -27,7 +27,7 @@ export default function DangerZonePage() {
   const confirmMatches = confirmText.trim().toLowerCase() === expectedConfirmText;
 
   async function handleDelete() {
-    if (!workspace?._id || !confirmMatches) return;
+    if (!workspace?._id || !confirmMatches || !canDelete) return;
     setDeleting(true);
     setDeleteError(null);
     try {
