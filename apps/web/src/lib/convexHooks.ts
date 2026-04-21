@@ -1,6 +1,10 @@
 import { anyApi } from "convex/server";
 import { useQuery } from "convex/react";
 
+export function useCurrentUser() {
+  return useQuery(anyApi.users.getCurrentUser, {});
+}
+
 export function useWorkspaces() {
   return useQuery(anyApi.workspaces.listWorkspaces, {});
 }

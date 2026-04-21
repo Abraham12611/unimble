@@ -5,6 +5,7 @@ import { anyApi } from "convex/server";
 import { useMutation, useQuery } from "convex/react";
 import { UserPlus, Trash } from "@phosphor-icons/react";
 import { useWorkspaceContext } from "@/lib/workspace-context";
+import { useCurrentUser } from "@/lib/convexHooks";
 
 type MemberUser = {
   email: string;
@@ -32,6 +33,7 @@ type Invite = {
 export default function TeamPage() {
   const { workspace } = useWorkspaceContext();
   const workspaceId = workspace?._id;
+  const currentUser = useCurrentUser() as { _id: string; role?: string } | null | undefined;
 
   const members = useQuery(
     anyApi.workspaces.listWorkspaceMembersWithProfiles,
@@ -47,6 +49,16 @@ export default function TeamPage() {
     () => invites?.filter((i) => i.status === "pending") ?? [],
     [invites]
   );
+
+  // Determine if the current user can manage team (owner or admin)
+  const currentMemberRole = useMemo(() => {
+    if (!currentUser || !members) return undefined;
+    const match = members.find((m) => m.userId === currentUser._id);
+    return match?.role;
+  }, [currentUser, members]);
+
+  const isCreator = currentUser?.role === "creator";
+  const canManageTeam = isCreator || currentMemberRole === "owner" || currentMemberRole === "admin";
 
   const inviteMember = useMutation(anyApi.workspaces.inviteWorkspaceMember);
   const removeMember = useMutation(anyApi.workspaces.removeWorkspaceMember);
@@ -106,38 +118,40 @@ export default function TeamPage() {
         </div>
       )}
 
-      {/* Invite section */}
-      <div className="rounded-[14px] border border-[#222222] bg-[#161616] p-5">
-        <div className="text-[15px] font-medium text-[#F0F0F0]">Invite Team Member</div>
-        <div className="mt-3 flex items-end gap-3">
-          <div className="flex-1 space-y-1">
-            <label htmlFor="invite-email" className="text-[12px] text-[#666666]">
-              Email address
-            </label>
-            <input
-              id="invite-email"
-              type="email"
-              value={inviteEmail}
-              onChange={(e) => setInviteEmail(e.target.value)}
-              placeholder="colleague@company.com"
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleInvite();
-              }}
-              className="w-full rounded-[6px] border border-[#2A2A2A] bg-[#1A1A1A] px-3 py-2 text-[13px] text-[#F0F0F0] outline-none placeholder:text-[#555555] focus:border-[#3A3A3A]"
-            />
+      {/* Invite section — only shown to owners/admins */}
+      {canManageTeam && (
+        <div className="rounded-[14px] border border-[#222222] bg-[#161616] p-5">
+          <div className="text-[15px] font-medium text-[#F0F0F0]">Invite Team Member</div>
+          <div className="mt-3 flex items-end gap-3">
+            <div className="flex-1 space-y-1">
+              <label htmlFor="invite-email" className="text-[12px] text-[#666666]">
+                Email address
+              </label>
+              <input
+                id="invite-email"
+                type="email"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                placeholder="colleague@company.com"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleInvite();
+                }}
+                className="w-full rounded-[6px] border border-[#2A2A2A] bg-[#1A1A1A] px-3 py-2 text-[13px] text-[#F0F0F0] outline-none placeholder:text-[#555555] focus:border-[#3A3A3A]"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={handleInvite}
+              disabled={inviting || !inviteEmail.trim()}
+              className="flex h-9 items-center gap-1.5 rounded-[6px] border border-[#2A2A2A] bg-[#1C1C1C] px-3 text-[13px] font-medium text-[#F0F0F0] transition-colors hover:bg-[#222222] disabled:cursor-not-allowed disabled:text-[#555555]"
+            >
+              <UserPlus size={14} />
+              <span>{inviting ? "Sending…" : "Send Invite"}</span>
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={handleInvite}
-            disabled={inviting || !inviteEmail.trim()}
-            className="flex h-9 items-center gap-1.5 rounded-[6px] border border-[#2A2A2A] bg-[#1C1C1C] px-3 text-[13px] font-medium text-[#F0F0F0] transition-colors hover:bg-[#222222] disabled:cursor-not-allowed disabled:text-[#555555]"
-          >
-            <UserPlus size={14} />
-            <span>{inviting ? "Sending…" : "Send Invite"}</span>
-          </button>
+          {inviteError && <div className="mt-2 text-[12px] text-[#EF4444]">{inviteError}</div>}
         </div>
-        {inviteError && <div className="mt-2 text-[12px] text-[#EF4444]">{inviteError}</div>}
-      </div>
+      )}
 
       {/* Members table */}
       <div className="rounded-[14px] border border-[#222222] bg-[#161616]">
@@ -181,7 +195,8 @@ export default function TeamPage() {
                     >
                       {member.role}
                     </span>
-                    {member.role !== "owner" && (
+                    {/* Remove button — only for owners/admins, and not for the owner role */}
+                    {canManageTeam && member.role !== "owner" && (
                       <>
                         {isConfirming ? (
                           <div className="flex items-center gap-1">

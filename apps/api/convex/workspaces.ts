@@ -462,12 +462,15 @@ export async function inviteWorkspaceMemberImpl(
     await ctx.db.delete(existing._id);
   }
 
+  const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+  const defaultExpiresAt = now + SEVEN_DAYS_MS;
+
   const inviteId = await ctx.db.insert("workspaceInvites", {
     workspaceId: args.workspaceId,
     email,
     invitedBy: user._id,
     status: "pending",
-    expiresAt: args.expiresAt === null ? undefined : args.expiresAt,
+    expiresAt: args.expiresAt === null ? undefined : (args.expiresAt ?? defaultExpiresAt),
     createdAt: now,
   });
 
@@ -489,7 +492,7 @@ export async function listWorkspaceInvitesImpl(
   ctx: QueryCtx,
   args: { workspaceId: Id<"workspaces"> }
 ) {
-  await requireWorkspaceOwner(ctx, args.workspaceId);
+  await requireWorkspaceAccess(ctx, args.workspaceId);
 
   return await ctx.db
     .query("workspaceInvites")
