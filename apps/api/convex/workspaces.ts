@@ -474,8 +474,12 @@ export async function inviteWorkspaceMemberImpl(
     )
     .unique();
 
-  if (existing && existing.status === "pending") {
-    return existing._id;
+  // Only short-circuit if the existing invite is both pending AND not expired
+  const isActiveAndPending =
+    existing?.status === "pending" && (!existing.expiresAt || existing.expiresAt >= now);
+
+  if (isActiveAndPending) {
+    return existing!._id;
   }
 
   if (existing) {
