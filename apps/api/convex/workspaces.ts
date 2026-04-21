@@ -591,6 +591,49 @@ export const listWorkspaceMembers = query({
   },
 });
 
+/**
+ * Lists workspace members enriched with user profile data (name, email, avatar).
+ */
+export async function listWorkspaceMembersWithProfilesImpl(
+  ctx: QueryCtx,
+  args: { workspaceId: Id<"workspaces"> }
+) {
+  await requireWorkspaceAccess(ctx, args.workspaceId);
+
+  const members = await ctx.db
+    .query("workspaceMembers")
+    .withIndex("by_workspace", (q) => q.eq("workspaceId", args.workspaceId))
+    .collect();
+
+  const enriched = [];
+  for (const member of members) {
+    const user = await ctx.db.get(member.userId);
+    enriched.push({
+      ...member,
+      user: user
+        ? {
+            email: user.email,
+            name: user.name ?? user.firstName ?? undefined,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            avatarUrl: user.avatarUrl ?? user.imageUrl ?? undefined,
+          }
+        : null,
+    });
+  }
+
+  return enriched;
+}
+
+export const listWorkspaceMembersWithProfiles = query({
+  args: {
+    workspaceId: convexValidators.workspaceId,
+  },
+  handler: async (ctx, args) => {
+    return await listWorkspaceMembersWithProfilesImpl(ctx, args);
+  },
+});
+
 export async function removeWorkspaceMemberImpl(
   ctx: MutationCtx,
   args: { workspaceId: Id<"workspaces">; userId: Id<"users"> }

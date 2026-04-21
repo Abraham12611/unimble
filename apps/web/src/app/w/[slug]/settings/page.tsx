@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 
-export default function SettingsPage() {
-  redirect("settings/team");
+export default async function SettingsPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
+  redirect(`/w/${slug}/settings/team`);
 }
