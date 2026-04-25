@@ -16,8 +16,10 @@ import {
   MagnifyingGlass,
 } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
+import { useState } from "react";
 import { WorkspaceProvider, useWorkspaceContext } from "@/lib/workspace-context";
 import { WorkspaceSwitcher } from "./workspace-switcher";
+import { CreateWorkspaceModal } from "./create-workspace-modal";
 
 const NAV_ITEMS = [
   { href: "dashboard", icon: House, label: "Home" },
@@ -65,7 +67,7 @@ function SidebarNav() {
   );
 }
 
-function TopBar() {
+function TopBar({ onCreateWorkspace }: { onCreateWorkspace: () => void }) {
   return (
     <header className="flex h-[52px] items-center justify-between border-b border-[#222222] bg-[#090909] px-4">
       <div className="flex items-center gap-3">
@@ -73,7 +75,7 @@ function TopBar() {
           Unimble
         </Link>
         <span className="text-[#333333]">/</span>
-        <WorkspaceSwitcher />
+        <WorkspaceSwitcher onCreateWorkspace={onCreateWorkspace} />
       </div>
 
       <div className="flex items-center gap-2">
@@ -131,10 +133,12 @@ function WorkspaceGuard({ children }: { children: ReactNode }) {
 }
 
 export function WorkspaceShell({ children }: { children: ReactNode }) {
+  const [showCreateModal, setShowCreateModal] = useState(false);
+
   return (
     <WorkspaceProvider>
       <div className="flex h-screen flex-col bg-[#090909] text-[#F0F0F0]">
-        <TopBar />
+        <TopBar onCreateWorkspace={() => setShowCreateModal(true)} />
         <div className="flex flex-1 overflow-hidden">
           <SidebarNav />
           <main className="flex-1 overflow-y-auto">
@@ -144,6 +148,7 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
           </main>
         </div>
       </div>
+      {showCreateModal && <CreateWorkspaceModal onClose={() => setShowCreateModal(false)} />}
     </WorkspaceProvider>
   );
 }
