@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { anyApi } from "convex/server";
 import { useMutation } from "convex/react";
 import { FloppyDisk } from "@phosphor-icons/react";
@@ -30,6 +31,7 @@ export default function GeneralSettingsPage() {
   const isCreator = currentUser?.role === "creator";
   const isOwner = workspace?.ownerId === currentUser?._id;
   const canEdit = isCreator || isOwner;
+  const router = useRouter();
 
   const wsId = workspace?._id;
   const wsName = workspace?.name;
@@ -57,7 +59,7 @@ export default function GeneralSettingsPage() {
   }, [wsId, wsName, wsDesc, wsSlug]);
 
   const finalSlug = finalizeSlug(slug);
-  const slugValid = slug === "" || SLUG_PATTERN.test(finalSlug);
+  const slugValid = finalSlug.length > 0 && SLUG_PATTERN.test(finalSlug);
   const nameValid = name.trim().length > 0;
   const hasChanges =
     name !== (wsName ?? "") || description !== (wsDesc ?? "") || slug !== (wsSlug ?? "");
@@ -68,14 +70,20 @@ export default function GeneralSettingsPage() {
     setSaveError(null);
     setSaveSuccess(false);
     try {
+      const slugChanged = finalSlug !== (wsSlug ?? "");
       await updateWorkspace({
         id: wsId,
         name: name.trim(),
         description: description.trim() || null,
-        slug: finalSlug || null,
+        slug: finalSlug,
       });
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
+
+      // Redirect to the new slug URL if it changed
+      if (slugChanged && finalSlug) {
+        router.replace(`/w/${finalSlug}/settings/general`);
+      }
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : String(err));
     } finally {
