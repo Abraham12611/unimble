@@ -25,7 +25,7 @@ export function CreateWorkspaceModal({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState<string | null>(null);
 
   const slug = slugify(name);
-  const canCreate = name.trim().length > 0 && !creating;
+  const canCreate = name.trim().length > 0 && slug.length > 0 && !creating;
 
   async function handleCreate() {
     if (!canCreate) return;
@@ -34,14 +34,11 @@ export function CreateWorkspaceModal({ onClose }: { onClose: () => void }) {
     try {
       await createWorkspace({
         name: name.trim(),
-        slug: slug || undefined,
+        slug,
         description: description.trim() || undefined,
       });
       onClose();
-      // Navigate to the new workspace
-      if (slug) {
-        router.push(`/w/${slug}/dashboard`);
-      }
+      router.push(`/w/${slug}/dashboard`);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setCreating(false);
@@ -49,14 +46,16 @@ export function CreateWorkspaceModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      onKeyDown={(e) => {
+        if (e.key === "Escape") onClose();
+      }}
+    >
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/60"
         onClick={onClose}
-        onKeyDown={(e) => {
-          if (e.key === "Escape") onClose();
-        }}
         role="button"
         tabIndex={-1}
         aria-label="Close modal"
@@ -98,11 +97,15 @@ export function CreateWorkspaceModal({ onClose }: { onClose: () => void }) {
               autoFocus
               className="w-full rounded-[6px] border border-[#2A2A2A] bg-[#1A1A1A] px-3 py-2 text-[13px] text-[#F0F0F0] outline-none placeholder:text-[#555555] focus:border-[#3A3A3A]"
             />
-            {slug && (
+            {slug ? (
               <p className="text-[11px] text-[#555555]">
                 URL: unimble.app/w/<span className="text-[#888888]">{slug}</span>
               </p>
-            )}
+            ) : name.trim().length > 0 ? (
+              <p className="text-[11px] text-[#EF4444]">
+                Name must contain at least one letter or number for the URL.
+              </p>
+            ) : null}
           </div>
 
           <div className="space-y-1">

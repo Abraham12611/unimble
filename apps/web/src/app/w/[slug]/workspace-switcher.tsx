@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CaretDown, Plus, Check } from "@phosphor-icons/react";
 import { useWorkspaceContext } from "@/lib/workspace-context";
 
@@ -26,8 +26,9 @@ export function WorkspaceSwitcher({ onCreateWorkspace }: { onCreateWorkspace?: (
   const containerRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  const filtered = (workspaces ?? []).filter((ws) =>
-    ws.name.toLowerCase().includes(search.toLowerCase())
+  const filtered = useMemo(
+    () => (workspaces ?? []).filter((ws) => ws.name.toLowerCase().includes(search.toLowerCase())),
+    [workspaces, search]
   );
 
   // Close on outside click
