@@ -118,7 +118,7 @@ export async function listWorkflowsImpl(ctx: QueryCtx, args: { workspaceId: Id<"
     .query("workflows")
     .withIndex("by_workspace", (q) => q.eq("workspaceId", args.workspaceId))
     .order("desc")
-    .collect();
+    .take(1000);
 }
 
 export const listWorkflows = query({
@@ -369,7 +369,7 @@ export async function listWorkflowVersionsImpl(
     .query("workflowVersions")
     .withIndex("by_workflow", (q) => q.eq("workflowId", args.workflowId))
     .order("desc")
-    .collect();
+    .take(1000);
 }
 
 export const listWorkflowVersions = query({

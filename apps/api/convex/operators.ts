@@ -96,7 +96,7 @@ export async function listOperatorsImpl(ctx: QueryCtx, args: { workspaceId: Id<"
     .query("operators")
     .withIndex("by_workspace", (q) => q.eq("workspaceId", args.workspaceId))
     .order("desc")
-    .collect();
+    .take(1000);
 }
 
 export const listOperators = query({
