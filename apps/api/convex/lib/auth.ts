@@ -122,3 +122,17 @@ export function slugify(input: string, fallback = "workspace") {
 
   return base.length > 0 ? base : fallback;
 }
+
+/**
+ * Repeatedly query-and-delete the first matching document until none remain.
+ * Safe for any number of documents — avoids the 16,384 collect() limit.
+ *
+ * Usage:
+ *   while (true) {
+ *     const doc = await ctx.db.query("table").withIndex(...).first();
+ *     if (!doc) break;
+ *     await ctx.db.delete(doc._id);
+ *   }
+ *
+ * This pattern is recommended over .collect() + loop for cascade deletes.
+ */
