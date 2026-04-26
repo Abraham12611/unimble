@@ -256,6 +256,9 @@ export default function TeamPage() {
                     <div className="mt-0.5 text-[12px] text-[#555555]">
                       Sent {new Date(invite.createdAt).toLocaleDateString()}
                     </div>
+                    <div className="mt-0.5 text-[11px] text-[#555555]">
+                      Only the invited email can accept this link
+                    </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <button

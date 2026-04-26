@@ -4,104 +4,15 @@ import { convexValidators } from "./argValidators";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
-import { normalizePlatformRole } from "./rbac";
 import { deleteWorkflowImpl } from "./workflows";
 import { workspaceValidator } from "./validators/workspace";
-
-function slugify(input: string) {
-  const base = input
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, "")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-
-  return base.length > 0 ? base : "workspace";
-}
-
-async function getCurrentUserOrThrow(ctx: QueryCtx | MutationCtx) {
-  const identity = await ctx.auth.getUserIdentity();
-  if (!identity) {
-    throw new Error("Not authenticated");
-  }
-
-  const clerkId = String(identity.subject ?? "").trim();
-  if (!clerkId) {
-    throw new Error("Not authenticated");
-  }
-
-  const user = await ctx.db
-    .query("users")
-    .withIndex("by_clerk_id", (q) => q.eq("clerkId", clerkId))
-    .unique();
-
-  if (!user) {
-    throw new Error("User not found");
-  }
-
-  const role = normalizePlatformRole(user.role);
-  const isAdmin = role === "creator";
-
-  return { user, isAdmin };
-}
-
-async function requireWorkspaceAccess(ctx: QueryCtx | MutationCtx, workspaceId: Id<"workspaces">) {
-  const { user, isAdmin } = await getCurrentUserOrThrow(ctx);
-
-  const workspace = await ctx.db.get(workspaceId);
-  if (!workspace) {
-    throw new Error("Workspace not found");
-  }
-
-  const isOwner = workspace.ownerId === user._id;
-
-  let isMember = false;
-  let memberRole: string | undefined;
-  if (!isAdmin && !isOwner) {
-    const membership = await ctx.db
-      .query("workspaceMembers")
-      .withIndex("by_workspace_and_user", (q) =>
-        q.eq("workspaceId", workspaceId).eq("userId", user._id)
-      )
-      .unique();
-    isMember = Boolean(membership);
-    memberRole = membership?.role;
-
-    if (!isMember) {
-      throw new Error("Forbidden");
-    }
-  } else if (isOwner) {
-    memberRole = "owner";
-  }
-
-  return { workspace, user, isAdmin, isOwner, isMember, memberRole };
-}
-
-async function requireWorkspaceOwner(ctx: QueryCtx | MutationCtx, workspaceId: Id<"workspaces">) {
-  const access = await requireWorkspaceAccess(ctx, workspaceId);
-  if (!access.isAdmin && !access.isOwner) {
-    throw new Error("Forbidden");
-  }
-
-  return access;
-}
-
-/**
- * Requires workspace owner, workspace admin role, or platform creator.
- * Use for team management operations (invite, remove members).
- */
-async function requireWorkspaceOwnerOrAdmin(
-  ctx: QueryCtx | MutationCtx,
-  workspaceId: Id<"workspaces">
-) {
-  const access = await requireWorkspaceAccess(ctx, workspaceId);
-  if (!access.isAdmin && !access.isOwner && access.memberRole !== "admin") {
-    throw new Error("Forbidden");
-  }
-
-  return access;
-}
+import {
+  getCurrentUserOrThrow,
+  requireWorkspaceAccess,
+  requireWorkspaceOwner,
+  requireWorkspaceOwnerOrAdmin,
+  slugify,
+} from "./lib/auth";
 
 async function requireOrganizationAccess(
   ctx: QueryCtx | MutationCtx,
