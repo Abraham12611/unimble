@@ -127,12 +127,14 @@ export async function listExecutionsImpl(
       .withIndex("by_workspace_and_status", (q) =>
         q.eq("workspaceId", args.workspaceId).eq("status", status)
       )
+      .order("desc")
       .take(1000);
   }
 
   return await ctx.db
     .query("executions")
     .withIndex("by_workspace", (q) => q.eq("workspaceId", args.workspaceId))
+    .order("desc")
     .take(1000);
 }
 
@@ -435,12 +437,14 @@ export async function listExecutionStepsImpl(
       .withIndex("by_execution_and_status", (q) =>
         q.eq("executionId", args.executionId).eq("status", status)
       )
+      .order("desc")
       .take(1000);
   }
 
   return await ctx.db
     .query("executionSteps")
     .withIndex("by_execution", (q) => q.eq("executionId", args.executionId))
+    .order("desc")
     .take(1000);
 }
 
@@ -476,12 +480,14 @@ export async function listExecutionApprovalsImpl(
       .withIndex("by_execution_and_status", (q) =>
         q.eq("executionId", args.executionId).eq("status", status)
       )
+      .order("desc")
       .take(1000);
   }
 
   return await ctx.db
     .query("approvals")
     .withIndex("by_execution", (q) => q.eq("executionId", args.executionId))
+    .order("desc")
     .take(1000);
 }
 
