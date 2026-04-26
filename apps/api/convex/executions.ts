@@ -287,22 +287,26 @@ export async function retryExecutionImpl(ctx: MutationCtx, args: { id: Id<"execu
     updatedAt: now,
   });
 
-  const steps = await ctx.db
-    .query("executionSteps")
-    .withIndex("by_execution", (q) => q.eq("executionId", args.id))
-    .collect();
+  // Delete steps using loop pattern (safe for >16,384 documents)
 
-  for (const s of steps) {
-    await ctx.db.delete(s._id);
+  while (true) {
+    const step = await ctx.db
+      .query("executionSteps")
+      .withIndex("by_execution", (q) => q.eq("executionId", args.id))
+      .first();
+    if (!step) break;
+    await ctx.db.delete(step._id);
   }
 
-  const approvals = await ctx.db
-    .query("approvals")
-    .withIndex("by_execution", (q) => q.eq("executionId", args.id))
-    .collect();
+  // Delete approvals using loop pattern
 
-  for (const a of approvals) {
-    await ctx.db.delete(a._id);
+  while (true) {
+    const approval = await ctx.db
+      .query("approvals")
+      .withIndex("by_execution", (q) => q.eq("executionId", args.id))
+      .first();
+    if (!approval) break;
+    await ctx.db.delete(approval._id);
   }
 
   return args.id;

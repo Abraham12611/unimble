@@ -274,12 +274,15 @@ export const updateWorkspace = mutation({
 export async function deleteWorkspaceImpl(ctx: MutationCtx, args: { id: Id<"workspaces"> }) {
   await requireWorkspaceOwner(ctx, args.id);
 
-  const members = await ctx.db
-    .query("workspaceMembers")
-    .withIndex("by_workspace", (q) => q.eq("workspaceId", args.id))
-    .collect();
+  // Delete members (loop pattern — safe for >16,384 documents)
 
-  for (const m of members) {
+  while (true) {
+    const m = await ctx.db
+      .query("workspaceMembers")
+      .withIndex("by_workspace", (q) => q.eq("workspaceId", args.id))
+      .first();
+    if (!m) break;
+
     const memberUser = await ctx.db.get(m.userId);
     if (memberUser?.defaultWorkspaceId === args.id) {
       await ctx.db.patch(m.userId, {
@@ -291,52 +294,69 @@ export async function deleteWorkspaceImpl(ctx: MutationCtx, args: { id: Id<"work
     await ctx.db.delete(m._id);
   }
 
-  const invites = await ctx.db
-    .query("workspaceInvites")
-    .withIndex("by_workspace", (q) => q.eq("workspaceId", args.id))
-    .collect();
+  // Delete invites
 
-  for (const inv of invites) {
+  while (true) {
+    const inv = await ctx.db
+      .query("workspaceInvites")
+      .withIndex("by_workspace", (q) => q.eq("workspaceId", args.id))
+      .first();
+    if (!inv) break;
     await ctx.db.delete(inv._id);
   }
 
-  const operators = await ctx.db
-    .query("operators")
-    .withIndex("by_workspace", (q) => q.eq("workspaceId", args.id))
-    .collect();
-  for (const op of operators) {
+  // Delete operators
+
+  while (true) {
+    const op = await ctx.db
+      .query("operators")
+      .withIndex("by_workspace", (q) => q.eq("workspaceId", args.id))
+      .first();
+    if (!op) break;
     await ctx.db.delete(op._id);
   }
 
-  const workflows = await ctx.db
-    .query("workflows")
-    .withIndex("by_workspace", (q) => q.eq("workspaceId", args.id))
-    .collect();
-  for (const wf of workflows) {
+  // Delete workflows (uses deleteWorkflowImpl for cascade)
+
+  while (true) {
+    const wf = await ctx.db
+      .query("workflows")
+      .withIndex("by_workspace", (q) => q.eq("workspaceId", args.id))
+      .first();
+    if (!wf) break;
     await deleteWorkflowImpl(ctx, { id: wf._id });
   }
 
-  const integrations = await ctx.db
-    .query("integrations")
-    .withIndex("by_workspace", (q) => q.eq("workspaceId", args.id))
-    .collect();
-  for (const i of integrations) {
+  // Delete integrations
+
+  while (true) {
+    const i = await ctx.db
+      .query("integrations")
+      .withIndex("by_workspace", (q) => q.eq("workspaceId", args.id))
+      .first();
+    if (!i) break;
     await ctx.db.delete(i._id);
   }
 
-  const events = await ctx.db
-    .query("events")
-    .withIndex("by_workspace", (q) => q.eq("workspaceId", args.id))
-    .collect();
-  for (const e of events) {
+  // Delete events
+
+  while (true) {
+    const e = await ctx.db
+      .query("events")
+      .withIndex("by_workspace", (q) => q.eq("workspaceId", args.id))
+      .first();
+    if (!e) break;
     await ctx.db.delete(e._id);
   }
 
-  const learnings = await ctx.db
-    .query("learnings")
-    .withIndex("by_workspace", (q) => q.eq("workspaceId", args.id))
-    .collect();
-  for (const l of learnings) {
+  // Delete learnings
+
+  while (true) {
+    const l = await ctx.db
+      .query("learnings")
+      .withIndex("by_workspace", (q) => q.eq("workspaceId", args.id))
+      .first();
+    if (!l) break;
     await ctx.db.delete(l._id);
   }
 

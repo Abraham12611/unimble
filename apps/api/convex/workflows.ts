@@ -296,35 +296,45 @@ export async function deleteWorkflowImpl(ctx: MutationCtx, args: { id: Id<"workf
 
   await requireWorkspaceOwner(ctx, wf.workspaceId);
 
-  const versions = await ctx.db
-    .query("workflowVersions")
-    .withIndex("by_workflow", (q) => q.eq("workflowId", wf._id))
-    .collect();
-  for (const v of versions) {
+  // Delete versions (loop pattern — safe for >16,384 documents)
+
+  while (true) {
+    const v = await ctx.db
+      .query("workflowVersions")
+      .withIndex("by_workflow", (q) => q.eq("workflowId", wf._id))
+      .first();
+    if (!v) break;
     await ctx.db.delete(v._id);
   }
 
-  const executions = await ctx.db
-    .query("executions")
-    .withIndex("by_workflow", (q) => q.eq("workflowId", wf._id))
-    .collect();
+  // Delete executions and their children
 
-  for (const exe of executions) {
-    const steps = await ctx.db
-      .query("executionSteps")
-      .withIndex("by_execution", (q) => q.eq("executionId", exe._id))
-      .collect();
+  while (true) {
+    const exe = await ctx.db
+      .query("executions")
+      .withIndex("by_workflow", (q) => q.eq("workflowId", wf._id))
+      .first();
+    if (!exe) break;
 
-    for (const step of steps) {
+    // Delete execution steps
+
+    while (true) {
+      const step = await ctx.db
+        .query("executionSteps")
+        .withIndex("by_execution", (q) => q.eq("executionId", exe._id))
+        .first();
+      if (!step) break;
       await ctx.db.delete(step._id);
     }
 
-    const approvals = await ctx.db
-      .query("approvals")
-      .withIndex("by_execution", (q) => q.eq("executionId", exe._id))
-      .collect();
+    // Delete execution approvals
 
-    for (const approval of approvals) {
+    while (true) {
+      const approval = await ctx.db
+        .query("approvals")
+        .withIndex("by_execution", (q) => q.eq("executionId", exe._id))
+        .first();
+      if (!approval) break;
       await ctx.db.delete(approval._id);
     }
 
