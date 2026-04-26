@@ -4,71 +4,8 @@ import { convexValidators } from "./argValidators";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
-import { normalizePlatformRole } from "./rbac";
+import { requireWorkspaceAccess, requireWorkspaceOwner } from "./lib/auth";
 import { operatorValidator } from "./validators/operator";
-
-async function getCurrentUserOrThrow(ctx: QueryCtx | MutationCtx) {
-  const identity = await ctx.auth.getUserIdentity();
-  if (!identity) {
-    throw new Error("Not authenticated");
-  }
-
-  const clerkId = String(identity.subject ?? "").trim();
-  if (!clerkId) {
-    throw new Error("Not authenticated");
-  }
-
-  const user = await ctx.db
-    .query("users")
-    .withIndex("by_clerk_id", (q) => q.eq("clerkId", clerkId))
-    .unique();
-
-  if (!user) {
-    throw new Error("User not found");
-  }
-
-  const role = normalizePlatformRole(user.role);
-  const isAdmin = role === "creator";
-
-  return { user, isAdmin };
-}
-
-async function requireWorkspaceAccess(ctx: QueryCtx | MutationCtx, workspaceId: Id<"workspaces">) {
-  const { user, isAdmin } = await getCurrentUserOrThrow(ctx);
-
-  const workspace = await ctx.db.get(workspaceId);
-  if (!workspace) {
-    throw new Error("Workspace not found");
-  }
-
-  const isOwner = workspace.ownerId === user._id;
-
-  let isMember = false;
-  if (!isAdmin && !isOwner) {
-    const membership = await ctx.db
-      .query("workspaceMembers")
-      .withIndex("by_workspace_and_user", (q) =>
-        q.eq("workspaceId", workspaceId).eq("userId", user._id)
-      )
-      .unique();
-    isMember = Boolean(membership);
-
-    if (!isMember) {
-      throw new Error("Forbidden");
-    }
-  }
-
-  return { workspace, user, isAdmin, isOwner, isMember };
-}
-
-async function requireWorkspaceOwner(ctx: QueryCtx | MutationCtx, workspaceId: Id<"workspaces">) {
-  const access = await requireWorkspaceAccess(ctx, workspaceId);
-  if (!access.isAdmin && !access.isOwner) {
-    throw new Error("Forbidden");
-  }
-
-  return access;
-}
 
 export async function createOperatorImpl(
   ctx: MutationCtx,

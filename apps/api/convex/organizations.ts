@@ -4,46 +4,8 @@ import { convexValidators } from "./argValidators";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
-import { normalizePlatformRole } from "./rbac";
+import { getCurrentUserOrThrow, slugify } from "./lib/auth";
 import { organizationValidator } from "./validators/organization";
-
-function slugify(input: string) {
-  const base = input
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, "")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-
-  return base.length > 0 ? base : "organization";
-}
-
-async function getCurrentUserOrThrow(ctx: QueryCtx | MutationCtx) {
-  const identity = await ctx.auth.getUserIdentity();
-  if (!identity) {
-    throw new Error("Not authenticated");
-  }
-
-  const clerkId = String(identity.subject ?? "").trim();
-  if (!clerkId) {
-    throw new Error("Not authenticated");
-  }
-
-  const user = await ctx.db
-    .query("users")
-    .withIndex("by_clerk_id", (q) => q.eq("clerkId", clerkId))
-    .unique();
-
-  if (!user) {
-    throw new Error("User not found");
-  }
-
-  const role = normalizePlatformRole(user.role);
-  const isAdmin = role === "creator";
-
-  return { user, isAdmin };
-}
 
 async function requireOrgAccess(ctx: QueryCtx | MutationCtx, organizationId: Id<"organizations">) {
   const { user, isAdmin } = await getCurrentUserOrThrow(ctx);
