@@ -2,18 +2,7 @@ import type { Id } from "./_generated/dataModel";
 import { mutation } from "./_generated/server";
 import { convexValidators } from "./argValidators";
 import { derivePlatformRole } from "./rbac";
-
-function slugify(input: string) {
-  const base = input
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, "")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-
-  return base.length > 0 ? base : "workspace";
-}
+import { slugify } from "./lib/auth";
 
 function splitEmails(input: string) {
   return input
@@ -181,7 +170,7 @@ export const completeOnboarding = mutation({
     const rawWorkspaceName = workspaceName || companyName || "Workspace";
 
     // --- Create organization first ---
-    const orgSlugBase = slugify(companyName || rawWorkspaceName);
+    const orgSlugBase = slugify(companyName || rawWorkspaceName, "organization");
     let orgSlug = orgSlugBase;
 
     let orgSlugFound = false;

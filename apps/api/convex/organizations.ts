@@ -41,7 +41,7 @@ export async function createOrganizationImpl(
 
   const now = Date.now();
 
-  const slugBase = slugify(args.slug?.trim() || args.name);
+  const slugBase = slugify(args.slug?.trim() || args.name, "organization");
   let slug = slugBase;
 
   let slugFound = false;

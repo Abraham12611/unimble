@@ -111,7 +111,7 @@ export async function requireWorkspaceMember(
   return await requireWorkspaceAccess(ctx, workspaceId);
 }
 
-export function slugify(input: string) {
+export function slugify(input: string, fallback = "workspace") {
   const base = input
     .trim()
     .toLowerCase()
@@ -120,5 +120,5 @@ export function slugify(input: string) {
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "");
 
-  return base.length > 0 ? base : "workspace";
+  return base.length > 0 ? base : fallback;
 }
