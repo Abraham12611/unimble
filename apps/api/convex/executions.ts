@@ -661,6 +661,12 @@ export async function updateExecutionStepStatusImpl(
     throw new Error("status is required");
   }
 
+  // Guard against re-opening a terminal step
+  const TERMINAL_STEP_STATUSES = new Set(["completed", "failed", "canceled", "skipped"]);
+  if (TERMINAL_STEP_STATUSES.has(step.status) && !TERMINAL_STEP_STATUSES.has(status)) {
+    throw new Error("Cannot reopen a terminal step; create a new step instead");
+  }
+
   const now = Date.now();
 
   const patch: Record<string, unknown> = {
