@@ -231,25 +231,29 @@ export async function deleteOperatorImpl(ctx: MutationCtx, args: { id: Id<"opera
 
   const now = Date.now();
 
-  const workflows = await ctx.db
-    .query("workflows")
-    .withIndex("by_workspace_and_operator", (q) =>
-      q.eq("workspaceId", op.workspaceId).eq("operatorId", args.id)
-    )
-    .collect();
+  // Unlink workflows from this operator (loop pattern — safe for >16,384 docs)
 
-  for (const wf of workflows) {
+  while (true) {
+    const wf = await ctx.db
+      .query("workflows")
+      .withIndex("by_workspace_and_operator", (q) =>
+        q.eq("workspaceId", op.workspaceId).eq("operatorId", args.id)
+      )
+      .first();
+    if (!wf) break;
     await ctx.db.patch(wf._id, { operatorId: undefined, updatedAt: now });
   }
 
-  const executions = await ctx.db
-    .query("executions")
-    .withIndex("by_workspace_and_operator", (q) =>
-      q.eq("workspaceId", op.workspaceId).eq("operatorId", args.id)
-    )
-    .collect();
+  // Unlink executions from this operator
 
-  for (const exe of executions) {
+  while (true) {
+    const exe = await ctx.db
+      .query("executions")
+      .withIndex("by_workspace_and_operator", (q) =>
+        q.eq("workspaceId", op.workspaceId).eq("operatorId", args.id)
+      )
+      .first();
+    if (!exe) break;
     await ctx.db.patch(exe._id, { operatorId: undefined, updatedAt: now });
   }
 
