@@ -256,7 +256,10 @@ export const disconnectToolkit = action({
     // Format: "composio:{connectedAccountId}" or "composio:{wsId}:{slug}"
     const credentialsRef = integration.credentialsRef ?? "";
     const parts = credentialsRef.split(":");
-    const composioAccountId = parts.length >= 2 ? parts[1] : null;
+    // Only the 2-part format "composio:{accountId}" holds a real
+    // Composio account ID. The 3-part fallback "composio:{wsId}:{slug}"
+    // has no valid account ID — skip revocation in that case.
+    const composioAccountId = parts.length === 2 ? parts[1] : null;
 
     // Revoke the Composio connected account if we have an ID
     if (composioAccountId) {
