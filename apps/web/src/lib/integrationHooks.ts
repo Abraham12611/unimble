@@ -79,3 +79,11 @@ export function useGetToolkitStatuses() {
 export function useInitiateToolkitAuth() {
   return useAction(anyApi.integrations.initiateToolkitAuth);
 }
+
+export function useValidateApiKey() {
+  return useAction(anyApi.integrations.validateApiKey);
+}
+
+export function useConnectWithApiKey() {
+  return useAction(anyApi.integrations.connectWithApiKey);
+}

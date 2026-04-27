@@ -109,3 +109,59 @@ export async function testComposioConnection(): Promise<{
     return { ok: false, message: `Composio connection failed: ${message}` };
   }
 }
+
+/**
+ * Validates an API key for a specific toolkit by attempting to
+ * create a connected account via Composio.
+ *
+ * For API-key-based integrations (Ghost, Dev.to, Hashnode, etc.),
+ * Composio stores the key and validates it against the provider.
+ *
+ * Uses `composio.connectedAccounts.initiate()` with `AuthScheme.APIKey`.
+ * Requires an auth config to be set up in the Composio dashboard for
+ * each API-key-based toolkit.
+ *
+ * @param workspaceId - The Convex workspace ID (Composio user_id)
+ * @param toolkitSlug - The toolkit slug (e.g. "ghost", "devto")
+ * @param apiKey - The user-provided API key
+ * @param authConfigId - The Composio auth config ID for this toolkit
+ * @returns { ok, message, connectedAccountId } indicating result
+ */
+export async function validateApiKeyConnection(
+  workspaceId: string,
+  toolkitSlug: string,
+  apiKey: string,
+  authConfigId?: string
+): Promise<{ ok: boolean; message: string; connectedAccountId?: string }> {
+  try {
+    if (!apiKey.trim()) {
+      return { ok: false, message: "API key cannot be empty" };
+    }
+
+    const { AuthScheme } = await import("@composio/core");
+    const client = getComposioClient();
+
+    // If no auth config ID provided, try using the toolkit slug
+    // as a default (Composio's managed auth configs use the slug)
+    const configId = authConfigId ?? toolkitSlug;
+
+    const connectionRequest = await client.connectedAccounts.initiate(workspaceId, configId, {
+      config: AuthScheme.APIKey({
+        api_key: apiKey.trim(),
+      }),
+    });
+
+    // API key connections are typically immediately active
+    return {
+      ok: true,
+      message: `Successfully connected to ${toolkitSlug}`,
+      connectedAccountId: connectionRequest.id,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return {
+      ok: false,
+      message: `API key validation failed: ${message}`,
+    };
+  }
+}

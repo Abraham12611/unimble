@@ -66,6 +66,89 @@ export const initiateToolkitAuth = action({
   },
 });
 
+/**
+ * Validates an API key by attempting to create a Composio connected
+ * account for the given toolkit. If the key is valid, returns success.
+ *
+ * Returns { ok, message, connectedAccountId }.
+ */
+export const validateApiKey = action({
+  args: {
+    workspaceId: v.string(),
+    toolkitSlug: v.string(),
+    apiKey: v.string(),
+    authConfigId: v.optional(v.string()),
+  },
+  handler: async (
+    _ctx,
+    args
+  ): Promise<{
+    ok: boolean;
+    message: string;
+    connectedAccountId?: string;
+  }> => {
+    const { validateApiKeyConnection } = await import("./lib/composio");
+    return await validateApiKeyConnection(
+      args.workspaceId,
+      args.toolkitSlug,
+      args.apiKey,
+      args.authConfigId
+    );
+  },
+});
+
+/**
+ * Connects an API-key-based integration end-to-end:
+ * 1. Validates the key via Composio
+ * 2. Stores the integration record in the local DB
+ *
+ * This is a convenience action that combines validation + storage.
+ */
+export const connectWithApiKey = action({
+  args: {
+    workspaceId: v.id("workspaces"),
+    toolkitSlug: v.string(),
+    apiKey: v.string(),
+    authConfigId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    // Step 1: Validate the API key via Composio
+    const { validateApiKeyConnection } = await import("./lib/composio");
+    const validation = await validateApiKeyConnection(
+      args.workspaceId,
+      args.toolkitSlug,
+      args.apiKey,
+      args.authConfigId
+    );
+
+    if (!validation.ok) {
+      return { ok: false, message: validation.message };
+    }
+
+    // Step 2: Store the integration record
+    // We store a reference identifier, never the raw API key.
+    // The actual key is managed by Composio's connected accounts.
+    const { getIntegrationBySlug: getBySlug } = await import("./lib/integrationRegistry");
+    const meta = getBySlug(args.toolkitSlug);
+
+    await ctx.runMutation(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      "integrations:upsertIntegration" as any,
+      {
+        workspaceId: args.workspaceId,
+        provider: args.toolkitSlug,
+        name: meta?.name ?? args.toolkitSlug,
+        credentialsRef: validation.connectedAccountId
+          ? `composio:${validation.connectedAccountId}`
+          : `composio:${args.workspaceId}:${args.toolkitSlug}`,
+        status: "active",
+      }
+    );
+
+    return { ok: true, message: validation.message };
+  },
+});
+
 // ---------------------------------------------------------------------------
 // Queries — Integration Registry (static catalog, no DB needed)
 // ---------------------------------------------------------------------------
