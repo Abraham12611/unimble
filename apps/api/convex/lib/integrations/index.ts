@@ -75,3 +75,43 @@ export {
   analyticsGetTopReferrers,
   analyticsGetContentPerformance,
 } from "./analytics";
+
+// LLM Providers
+export type {
+  ModelTier,
+  ModelConfig,
+  ChatMessage,
+  CompletionOptions,
+  CompletionResult,
+  CostRecord,
+  EmbeddingResult,
+} from "./llm";
+export { MODEL_CONFIGS, llmComplete, llmPrompt, llmEmbed } from "./llm";
+
+// Perplexity
+export type { PerplexityCitation, PerplexityResult, PerplexityOptions } from "./perplexity";
+export {
+  PERPLEXITY_MODELS,
+  perplexitySearch,
+  perplexityResearch,
+  perplexityFactCheck,
+} from "./perplexity";
+
+// Firecrawl
+export type {
+  ScrapeResult,
+  ScrapeOptions,
+  CrawlResult,
+  CrawlPage,
+  CrawlOptions,
+} from "./firecrawl";
+export { firecrawlScrape, firecrawlCrawl, firecrawlExtract } from "./firecrawl";
+
+// Firehose
+export type { FirehoseRule, FirehoseEvent, CreateRuleInput, PollOptions } from "./firehose";
+export {
+  firehoseCreateRule,
+  firehoseListRules,
+  firehoseDeleteRule,
+  firehosePollEvents,
+} from "./firehose";
