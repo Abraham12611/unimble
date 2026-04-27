@@ -150,6 +150,27 @@ const DEV_ACTIONS: Record<
 // ---------------------------------------------------------------------------
 
 /**
+ * Validates and parses a repository string in "owner/repo" format.
+ * Returns an error result if the format is invalid.
+ */
+function parseRepository(
+  repository: string
+): { ok: true; owner: string; repo: string } | { ok: false; error: string } {
+  const slashIndex = repository.indexOf("/");
+  if (slashIndex <= 0 || slashIndex === repository.length - 1) {
+    return {
+      ok: false,
+      error: `Invalid repository format "${repository}". Expected "owner/repo".`,
+    };
+  }
+  return {
+    ok: true,
+    owner: repository.substring(0, slashIndex),
+    repo: repository.substring(slashIndex + 1),
+  };
+}
+
+/**
  * Creates a new issue on the specified dev platform.
  */
 export async function devCreateIssue(
@@ -158,14 +179,15 @@ export async function devCreateIssue(
   input: CreateIssueInput
 ): Promise<IntegrationActionResult<DevIssue>> {
   try {
+    const parsed = parseRepository(input.repository);
+    if (!parsed.ok) return { ok: false, error: parsed.error };
+
     const session = await createComposioSession(workspaceId, [toolkit]);
     const actionName = DEV_ACTIONS[toolkit].createIssue;
 
-    const [owner, repo] = input.repository.split("/");
-
     const result = await session.execute(actionName, {
-      owner,
-      repo,
+      owner: parsed.owner,
+      repo: parsed.repo,
       title: input.title,
       body: input.body,
       ...(input.labels?.length ? { labels: input.labels } : {}),
@@ -194,23 +216,25 @@ export async function devListIssues(
   state?: "open" | "closed" | "all"
 ): Promise<IntegrationActionResult<DevIssue[]>> {
   try {
+    const parsed = parseRepository(repository);
+    if (!parsed.ok) return { ok: false, error: parsed.error };
+
     const session = await createComposioSession(workspaceId, [toolkit]);
     const actionName = DEV_ACTIONS[toolkit].listIssues;
 
-    const [owner, repo] = repository.split("/");
-
     const result = await session.execute(actionName, {
-      owner,
-      repo,
+      owner: parsed.owner,
+      repo: parsed.repo,
       state: state ?? "open",
     });
 
-    const items = Array.isArray(result) ? result : [result];
+    // Filter out null/undefined items
+    const rawItems = Array.isArray(result) ? result : result ? [result] : [];
+    const items = rawItems
+      .filter((item: unknown) => item != null)
+      .map((item: unknown) => normalizeIssueResponse(toolkit, item, repository));
 
-    return {
-      ok: true,
-      data: items.map((item: unknown) => normalizeIssueResponse(toolkit, item, repository)),
-    };
+    return { ok: true, data: items };
   } catch (error) {
     return {
       ok: false,
@@ -229,14 +253,15 @@ export async function devCloseIssue(
   issueNumber: number
 ): Promise<IntegrationActionResult<void>> {
   try {
+    const parsed = parseRepository(repository);
+    if (!parsed.ok) return { ok: false, error: parsed.error };
+
     const session = await createComposioSession(workspaceId, [toolkit]);
     const actionName = DEV_ACTIONS[toolkit].closeIssue;
 
-    const [owner, repo] = repository.split("/");
-
     await session.execute(actionName, {
-      owner,
-      repo,
+      owner: parsed.owner,
+      repo: parsed.repo,
       issue_number: issueNumber,
       state: "closed",
     });
@@ -263,12 +288,12 @@ export async function devListRepos(
 
     const result = await session.execute(actionName, {});
 
-    const items = Array.isArray(result) ? result : [result];
+    const rawItems = Array.isArray(result) ? result : result ? [result] : [];
+    const items = rawItems
+      .filter((item: unknown) => item != null)
+      .map((item: unknown) => normalizeRepoResponse(toolkit, item));
 
-    return {
-      ok: true,
-      data: items.map((item: unknown) => normalizeRepoResponse(toolkit, item)),
-    };
+    return { ok: true, data: items };
   } catch (error) {
     return {
       ok: false,

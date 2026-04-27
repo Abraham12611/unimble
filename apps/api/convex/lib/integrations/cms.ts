@@ -267,6 +267,13 @@ export async function cmsGetPost(
   externalId: string
 ): Promise<IntegrationActionResult<CmsPost>> {
   try {
+    if (toolkit === "medium") {
+      return {
+        ok: false,
+        error: "Medium does not support fetching individual posts",
+      };
+    }
+
     const session = await createComposioSession(workspaceId, [toolkit]);
     const actionName = CMS_ACTIONS[toolkit].getPost;
 
@@ -295,21 +302,38 @@ export async function cmsListPosts(
   pagination?: PaginationParams
 ): Promise<IntegrationActionResult<PaginatedResult<CmsPost>>> {
   try {
+    if (toolkit === "medium") {
+      return {
+        ok: false,
+        error: "Medium does not support listing posts",
+      };
+    }
+
     const session = await createComposioSession(workspaceId, [toolkit]);
     const actionName = CMS_ACTIONS[toolkit].listPosts;
 
+    const limit = pagination?.limit ?? 20;
+
     const result = await session.execute(actionName, {
-      ...(pagination?.limit ? { limit: pagination.limit } : {}),
+      ...(limit ? { limit } : {}),
       ...(pagination?.cursor ? { cursor: pagination.cursor } : {}),
     });
 
-    const items = Array.isArray(result) ? result : [result];
+    // Filter out null/undefined items from the response
+    const rawItems = Array.isArray(result) ? result : result ? [result] : [];
+    const items = rawItems
+      .filter((item: unknown) => item != null)
+      .map((item: unknown) => normalizeCmsResponse(toolkit, item));
+
+    // Detect pagination: if we got exactly `limit` items, there may be more
+    const hasMore = items.length >= limit;
 
     return {
       ok: true,
       data: {
-        items: items.map((item: unknown) => normalizeCmsResponse(toolkit, item)),
-        hasMore: false,
+        items,
+        hasMore,
+        total: items.length,
       },
     };
   } catch (error) {
