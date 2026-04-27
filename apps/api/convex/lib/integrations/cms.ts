@@ -333,7 +333,6 @@ export async function cmsListPosts(
       data: {
         items,
         hasMore,
-        total: items.length,
       },
     };
   } catch (error) {
