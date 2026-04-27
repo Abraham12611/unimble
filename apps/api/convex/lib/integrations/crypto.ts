@@ -59,8 +59,8 @@ function getMasterKey(): string {
         "Add a 32+ character secret to your Convex environment."
     );
   }
-  if (key.length < 32) {
-    throw new Error("CREDENTIAL_ENCRYPTION_KEY must be at least 32 characters.");
+  if (Buffer.byteLength(key, "utf8") < 32) {
+    throw new Error("CREDENTIAL_ENCRYPTION_KEY must provide at least 32 bytes of entropy.");
   }
   return key;
 }
@@ -80,6 +80,10 @@ function getMasterKey(): string {
 export function encryptCredential(plaintext: string, workspaceId: string): string {
   if (!plaintext) {
     throw new Error("Cannot encrypt empty credential");
+  }
+
+  if (!workspaceId) {
+    throw new Error("Cannot encrypt credential without a workspace ID");
   }
 
   const key = deriveWorkspaceKey(workspaceId);
@@ -109,6 +113,10 @@ export function encryptCredential(plaintext: string, workspaceId: string): strin
 export function decryptCredential(encrypted: string, workspaceId: string): string {
   if (!encrypted.startsWith(ENCRYPTION_PREFIX)) {
     throw new Error("Invalid encrypted credential format — missing version prefix");
+  }
+
+  if (!workspaceId) {
+    throw new Error("Cannot decrypt credential without a workspace ID");
   }
 
   const payload = encrypted.slice(ENCRYPTION_PREFIX.length);

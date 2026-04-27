@@ -184,6 +184,15 @@ export async function refreshToken(
       };
     }
 
+    // If the health check itself failed (isValid=false, isExpired=false),
+    // report the failure rather than silently retrying
+    if (!health.isValid) {
+      return {
+        ok: false,
+        message: `Health check failed: ${health.message}`,
+      };
+    }
+
     // For expiring-soon tokens, Composio should auto-refresh
     // TODO(phase-6): This branch is currently unreachable because
     // isExpiringSoon is always false. Will be activated when expiry
