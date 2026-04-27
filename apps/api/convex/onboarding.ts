@@ -1,19 +1,8 @@
 import type { Id } from "./_generated/dataModel";
 import { mutation } from "./_generated/server";
-import { v } from "convex/values";
+import { convexValidators } from "./argValidators";
 import { derivePlatformRole } from "./rbac";
-
-function slugify(input: string) {
-  const base = input
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, "")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-
-  return base.length > 0 ? base : "workspace";
-}
+import { slugify } from "./lib/auth";
 
 function splitEmails(input: string) {
   return input
@@ -46,13 +35,13 @@ function parseHttpsUrlOrThrow(rawInput: string) {
 
 export const completeOnboarding = mutation({
   args: {
-    fullName: v.string(),
-    avatarUrl: v.string(),
-    companyName: v.string(),
-    companySize: v.string(),
-    useCase: v.string(),
-    workspaceName: v.string(),
-    inviteEmails: v.string(),
+    fullName: convexValidators.stringField,
+    avatarUrl: convexValidators.stringField,
+    companyName: convexValidators.stringField,
+    companySize: convexValidators.stringField,
+    useCase: convexValidators.stringField,
+    workspaceName: convexValidators.stringField,
+    inviteEmails: convexValidators.stringField,
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -168,7 +157,6 @@ export const completeOnboarding = mutation({
         ...(avatarUrl ? { avatarUrl } : {}),
         imageUrl: avatarUrl ?? existingUser.imageUrl ?? identity.pictureUrl ?? undefined,
         role: platformRole,
-        onboarding: onboardingPayload,
         updatedAt: now,
       });
 
@@ -181,6 +169,44 @@ export const completeOnboarding = mutation({
 
     const rawWorkspaceName = workspaceName || companyName || "Workspace";
 
+    // --- Create organization first ---
+    const orgSlugBase = slugify(companyName || rawWorkspaceName, "organization");
+    let orgSlug = orgSlugBase;
+
+    let orgSlugFound = false;
+    for (let i = 0; i < 25; i += 1) {
+      const existingOrg = await ctx.db
+        .query("organizations")
+        .withIndex("by_slug", (q) => q.eq("slug", orgSlug))
+        .unique();
+
+      if (!existingOrg) {
+        orgSlugFound = true;
+        break;
+      }
+
+      orgSlug = `${orgSlugBase}-${i + 2}`;
+    }
+
+    if (!orgSlugFound) {
+      throw new Error("Could not generate a unique organization slug after 25 attempts");
+    }
+
+    const organizationId = await ctx.db.insert("organizations", {
+      name: companyName || rawWorkspaceName,
+      slug: orgSlug,
+      ownerId: userId,
+      plan: "free",
+      status: "active",
+      settings: {
+        companySize: args.companySize,
+        useCase: args.useCase,
+      },
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    // --- Create workspace under the organization ---
     const slugBase = slugify(rawWorkspaceName);
     let slug = slugBase;
 
@@ -204,10 +230,12 @@ export const completeOnboarding = mutation({
     }
 
     const workspaceId = await ctx.db.insert("workspaces", {
+      organizationId,
       name: rawWorkspaceName,
       slug,
       ownerId: userId,
       plan: "free",
+      status: "active",
       settings: {
         useCase: args.useCase,
         companyName,
@@ -242,6 +270,7 @@ export const completeOnboarding = mutation({
         invitedBy: userId,
         status: "pending",
         createdAt: now,
+        expiresAt: now + 7 * 24 * 60 * 60 * 1000,
       });
     }
 
