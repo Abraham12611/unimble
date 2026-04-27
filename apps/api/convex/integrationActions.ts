@@ -105,7 +105,11 @@ export const getToolkitStatuses = action({
 /**
  * Initiates an OAuth authorization flow for a toolkit.
  * Requires workspace owner or admin.
- * Returns a redirect URL and a signed state token for CSRF protection.
+ *
+ * Builds an OAuth callback URL with the HMAC-signed state embedded
+ * as a query parameter. Composio preserves custom query params in
+ * the callback URL, so the state travels through the OAuth provider
+ * and arrives at our callback route for CSRF validation.
  */
 export const initiateToolkitAuth = action({
   args: {
@@ -122,12 +126,18 @@ export const initiateToolkitAuth = action({
     // Generate HMAC-signed state for CSRF protection
     const state = generateOAuthState(args.workspaceSlug);
 
+    // Build callback URL with state and toolkit embedded as query params.
+    // Composio preserves these params and echoes them back after OAuth.
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+    const callbackUrl = new URL("/api/integrations/oauth/callback", appUrl);
+    callbackUrl.searchParams.set("state", state);
+    callbackUrl.searchParams.set("toolkit", args.toolkitSlug);
+
     const { initiateToolkitAuth: initAuth } = await import("./lib/composio");
-    const result = await initAuth(args.workspaceId, args.toolkitSlug);
+    const result = await initAuth(args.workspaceId, args.toolkitSlug, callbackUrl.toString());
 
     return {
       redirectUrl: result.redirectUrl,
-      state,
     };
   },
 });
@@ -214,5 +224,40 @@ export const connectWithApiKey = action({
     });
 
     return { ok: true, message: validation.message };
+  },
+});
+
+/**
+ * Disconnects an integration: revokes the Composio connected account
+ * and updates the local DB record.
+ * Requires workspace owner or admin.
+ */
+export const disconnectToolkit = action({
+  args: {
+    integrationId: v.id("integrations"),
+    credentialsRef: v.string(),
+  },
+  handler: async (ctx, args) => {
+    // Extract the Composio connected account ID from the ref
+    // Format: "composio:{connectedAccountId}" or "composio:{wsId}:{slug}"
+    const parts = args.credentialsRef.split(":");
+    const composioAccountId = parts.length >= 2 ? parts[1] : null;
+
+    // Revoke the Composio connected account if we have an ID
+    if (composioAccountId) {
+      const { revokeConnectedAccount } = await import("./lib/composio");
+      const result = await revokeConnectedAccount(composioAccountId);
+      if (!result.ok) {
+        // Log but don't block — still clean up the local record
+        console.warn(`Failed to revoke Composio account ${composioAccountId}: ${result.message}`);
+      }
+    }
+
+    // Update the local DB record via internal mutation
+    await ctx.runMutation(internal.integrations.disconnectIntegrationInternal, {
+      id: args.integrationId,
+    });
+
+    return { ok: true };
   },
 });

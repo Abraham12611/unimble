@@ -78,11 +78,18 @@ export async function getToolkitStatuses(workspaceId: string, toolkitSlugs?: str
  *
  * @param workspaceId - The Convex workspace ID
  * @param toolkitSlug - The toolkit to authorize (e.g. "github", "gmail")
+ * @param callbackUrl - The OAuth callback URL with HMAC state embedded
  * @returns The redirect URL the user should visit to complete OAuth
  */
-export async function initiateToolkitAuth(workspaceId: string, toolkitSlug: string) {
+export async function initiateToolkitAuth(
+  workspaceId: string,
+  toolkitSlug: string,
+  callbackUrl: string
+) {
   const session = await createComposioSession(workspaceId, [toolkitSlug]);
-  const connectionRequest = await session.authorize(toolkitSlug);
+  const connectionRequest = await session.authorize(toolkitSlug, {
+    callbackUrl,
+  });
 
   return {
     redirectUrl: connectionRequest.redirectUrl,
@@ -164,6 +171,33 @@ export async function validateApiKeyConnection(
     return {
       ok: false,
       message: `API key validation failed: ${message}`,
+    };
+  }
+}
+
+/**
+ * Revokes a Composio connected account, removing the stored
+ * credentials (OAuth tokens or API keys) from Composio's servers.
+ *
+ * Should be called when a user disconnects an integration to ensure
+ * the external credentials are cleaned up, not just the local DB record.
+ *
+ * @param connectedAccountId - The Composio connected account ID
+ *   (stored in the integration's credentialsRef as "composio:{id}")
+ * @returns { ok, message } indicating result
+ */
+export async function revokeConnectedAccount(
+  connectedAccountId: string
+): Promise<{ ok: boolean; message: string }> {
+  try {
+    const client = getComposioClient();
+    await client.connectedAccounts.delete(connectedAccountId);
+    return { ok: true, message: "Connected account revoked" };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return {
+      ok: false,
+      message: `Failed to revoke connected account: ${message}`,
     };
   }
 }

@@ -97,6 +97,24 @@ export const upsertIntegrationInternal = internalMutation({
   },
 });
 
+/**
+ * Internal mutation: disconnects an integration by setting status.
+ * Called from disconnectToolkit action after Composio revocation.
+ */
+export const disconnectIntegrationInternal = internalMutation({
+  args: { id: v.id("integrations") },
+  handler: async (ctx, args) => {
+    const integration = await ctx.db.get(args.id);
+    if (!integration) throw new Error("Integration not found");
+
+    await ctx.db.patch(args.id, {
+      status: "disconnected",
+      credentialsRef: undefined,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
 // ---------------------------------------------------------------------------
 // Queries — Integration Registry (static catalog, no DB needed)
 // ---------------------------------------------------------------------------

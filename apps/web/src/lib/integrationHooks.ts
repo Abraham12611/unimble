@@ -90,3 +90,7 @@ export function useValidateApiKey() {
 export function useConnectWithApiKey() {
   return useAction(anyApi.integrationActions.connectWithApiKey);
 }
+
+export function useDisconnectToolkit() {
+  return useAction(anyApi.integrationActions.disconnectToolkit);
+}
