@@ -115,3 +115,21 @@ export {
   firehoseDeleteRule,
   firehosePollEvents,
 } from "./firehose";
+
+// Credential Encryption
+export {
+  encryptCredential,
+  decryptCredential,
+  isEncrypted,
+  reEncryptCredential,
+  maskCredential,
+} from "./crypto";
+
+// Token Management
+export type { TokenHealth, TokenRefreshResult, TokenRevocationResult } from "./tokenManager";
+export {
+  checkTokenHealth,
+  refreshToken,
+  revokeToken,
+  checkMultipleTokenHealth,
+} from "./tokenManager";
