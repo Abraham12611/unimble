@@ -16,10 +16,40 @@
  * environment, not during Convex's V8 bundling phase.
  */
 
+import { createHmac } from "crypto";
 import { v } from "convex/values";
 import { action } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { getIntegrationBySlug } from "./lib/integrationRegistry";
+
+// ---------------------------------------------------------------------------
+// OAuth state signing
+// ---------------------------------------------------------------------------
+
+/**
+ * Generates an HMAC-SHA256 signed OAuth state token.
+ *
+ * Format: `{workspaceSlug}:{timestamp}:{signature}`
+ *
+ * The signature prevents forgery — only the server with the secret
+ * can produce a valid state. The timestamp provides a 10-minute
+ * freshness window.
+ */
+function generateOAuthState(workspaceSlug: string): string {
+  const secret = getOAuthStateSecret();
+  const timestamp = Date.now().toString();
+  const payload = `${workspaceSlug}:${timestamp}`;
+  const sig = createHmac("sha256", secret).update(payload).digest("hex");
+  return `${payload}:${sig}`;
+}
+
+function getOAuthStateSecret(): string {
+  const secret = process.env.OAUTH_STATE_SECRET;
+  if (!secret) {
+    throw new Error("OAUTH_STATE_SECRET is not set. Add it to your Convex environment variables.");
+  }
+  return secret;
+}
 
 // ---------------------------------------------------------------------------
 // Auth helper for actions
@@ -75,12 +105,13 @@ export const getToolkitStatuses = action({
 /**
  * Initiates an OAuth authorization flow for a toolkit.
  * Requires workspace owner or admin.
- * Returns a redirect URL the user should visit.
+ * Returns a redirect URL and a signed state token for CSRF protection.
  */
 export const initiateToolkitAuth = action({
   args: {
     workspaceId: v.id("workspaces"),
     toolkitSlug: v.string(),
+    workspaceSlug: v.string(),
   },
   handler: async (ctx, args) => {
     await requireAuthenticatedAction(ctx);
@@ -88,8 +119,16 @@ export const initiateToolkitAuth = action({
       workspaceId: args.workspaceId,
     });
 
+    // Generate HMAC-signed state for CSRF protection
+    const state = generateOAuthState(args.workspaceSlug);
+
     const { initiateToolkitAuth: initAuth } = await import("./lib/composio");
-    return await initAuth(args.workspaceId, args.toolkitSlug);
+    const result = await initAuth(args.workspaceId, args.toolkitSlug);
+
+    return {
+      redirectUrl: result.redirectUrl,
+      state,
+    };
   },
 });
 
