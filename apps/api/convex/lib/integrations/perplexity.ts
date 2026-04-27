@@ -12,6 +12,8 @@
  * include citations, making them ideal for research tasks.
  */
 
+import { fetchWithRetry } from "./utils";
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -208,37 +210,4 @@ function parseCitations(raw: any[]): PerplexityCitation[] {
       snippet: c.snippet ?? c.text ?? undefined,
     };
   });
-}
-
-async function fetchWithRetry(url: string, init: RequestInit, maxRetries = 2): Promise<Response> {
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      const response = await fetch(url, init);
-
-      if (response.status === 429) {
-        const retryAfter = Number(response.headers.get("retry-after")) || 2;
-        await sleep(retryAfter * 1000);
-        continue;
-      }
-
-      if (response.status >= 500 && attempt < maxRetries) {
-        await sleep(1000 * (attempt + 1));
-        continue;
-      }
-
-      return response;
-    } catch (error) {
-      if (attempt < maxRetries) {
-        await sleep(1000 * (attempt + 1));
-        continue;
-      }
-      throw error;
-    }
-  }
-
-  throw new Error("Max retries exceeded");
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }

@@ -7,13 +7,9 @@
  * the Firecrawl API. Used by operators to extract structured data
  * from web pages, scrape competitor content, convert pages to
  * markdown for LLM processing, and monitor documentation sites.
- *
- * Key features:
- * - JavaScript rendering (handles SPAs)
- * - Structured data extraction with JSON schemas
- * - Batch scraping with rate limiting
- * - Markdown conversion for LLM consumption
  */
+
+import { fetchWithRetry, sleep } from "./utils";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -56,7 +52,7 @@ export interface ScrapeOptions {
   includeTags?: string[];
   /** HTML tags to exclude */
   excludeTags?: string[];
-  /** Request timeout in ms */
+  /** Per-request timeout in ms */
   timeout?: number;
 }
 
@@ -102,9 +98,6 @@ export interface CrawlOptions {
 
 /**
  * Scrapes a single URL and extracts content.
- *
- * Supports markdown extraction, HTML, and structured JSON
- * extraction with custom schemas.
  */
 export async function firecrawlScrape(
   url: string,
@@ -142,7 +135,7 @@ export async function firecrawlScrape(
       },
       body: JSON.stringify(body),
     },
-    options.timeout
+    { timeout: options.timeout, baseDelay: 2000 }
   );
 
   if (!response.ok) {
@@ -172,7 +165,8 @@ export async function firecrawlScrape(
  * Crawls a website starting from the given URL.
  *
  * Discovers and scrapes multiple pages, respecting depth and
- * path constraints.
+ * path constraints. Uses fetchWithRetry for the status poll
+ * to handle 429s with proper backoff.
  */
 export async function firecrawlCrawl(
   url: string,
@@ -195,14 +189,18 @@ export async function firecrawlCrawl(
   if (options.excludePaths) body.excludePaths = options.excludePaths;
 
   // Start the crawl job
-  const startResponse = await fetchWithRetry("https://api.firecrawl.dev/v1/crawl", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
+  const startResponse = await fetchWithRetry(
+    "https://api.firecrawl.dev/v1/crawl",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
     },
-    body: JSON.stringify(body),
-  });
+    { baseDelay: 2000 }
+  );
 
   if (!startResponse.ok) {
     const errorText = await startResponse.text();
@@ -217,7 +215,8 @@ export async function firecrawlCrawl(
     throw new Error("Firecrawl crawl did not return a job ID");
   }
 
-  // Poll for completion (max 5 minutes)
+  // Poll for completion (max 5 minutes) using fetchWithRetry
+  // so 429s and 5xx errors get proper backoff
   const maxWait = 5 * 60 * 1000;
   const pollInterval = 3000;
   let elapsed = 0;
@@ -226,9 +225,17 @@ export async function firecrawlCrawl(
     await sleep(pollInterval);
     elapsed += pollInterval;
 
-    const statusResponse = await fetch(`https://api.firecrawl.dev/v1/crawl/${jobId}`, {
-      headers: { Authorization: `Bearer ${apiKey}` },
-    });
+    let statusResponse: Response;
+    try {
+      statusResponse = await fetchWithRetry(
+        `https://api.firecrawl.dev/v1/crawl/${jobId}`,
+        { headers: { Authorization: `Bearer ${apiKey}` } },
+        { maxRetries: 1, baseDelay: 2000 }
+      );
+    } catch {
+      // Network error during poll — retry on next iteration
+      continue;
+    }
 
     if (!statusResponse.ok) continue;
 
@@ -263,8 +270,6 @@ export async function firecrawlCrawl(
 
 /**
  * Extracts structured data from a URL using a JSON schema.
- *
- * Convenience wrapper around firecrawlScrape with JSON format.
  */
 export async function firecrawlExtract<T = unknown>(
   url: string,
@@ -295,52 +300,4 @@ function getFirecrawlApiKey(): string {
     throw new Error("FIRECRAWL_API_KEY is not set. Add it to your environment.");
   }
   return apiKey;
-}
-
-async function fetchWithRetry(
-  url: string,
-  init: RequestInit,
-  timeout?: number,
-  maxRetries = 2
-): Promise<Response> {
-  const controller = timeout ? new AbortController() : undefined;
-  const timeoutId = timeout ? setTimeout(() => controller!.abort(), timeout) : undefined;
-
-  try {
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      try {
-        const response = await fetch(url, {
-          ...init,
-          ...(controller ? { signal: controller.signal } : {}),
-        });
-
-        if (response.status === 429) {
-          const retryAfter = Number(response.headers.get("retry-after")) || 5;
-          await sleep(retryAfter * 1000);
-          continue;
-        }
-
-        if (response.status >= 500 && attempt < maxRetries) {
-          await sleep(2000 * (attempt + 1));
-          continue;
-        }
-
-        return response;
-      } catch (error) {
-        if (attempt < maxRetries) {
-          await sleep(2000 * (attempt + 1));
-          continue;
-        }
-        throw error;
-      }
-    }
-
-    throw new Error("Max retries exceeded");
-  } finally {
-    if (timeoutId) clearTimeout(timeoutId);
-  }
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
