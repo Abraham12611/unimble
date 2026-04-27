@@ -230,17 +230,32 @@ export const connectWithApiKey = action({
 /**
  * Disconnects an integration: revokes the Composio connected account
  * and updates the local DB record.
- * Requires workspace owner or admin.
+ * Requires authentication and workspace owner or admin.
  */
 export const disconnectToolkit = action({
   args: {
     integrationId: v.id("integrations"),
-    credentialsRef: v.string(),
   },
   handler: async (ctx, args) => {
-    // Extract the Composio connected account ID from the ref
+    await requireAuthenticatedAction(ctx);
+
+    // Fetch the integration record to get workspace and credentials
+    const integration = await ctx.runQuery(internal.integrations.getIntegrationById, {
+      id: args.integrationId,
+    });
+    if (!integration) {
+      throw new Error("Integration not found");
+    }
+
+    // Verify workspace ownership
+    await ctx.runQuery(internal.integrations.verifyWorkspaceOwnerOrAdmin, {
+      workspaceId: integration.workspaceId,
+    });
+
+    // Extract the Composio connected account ID from the stored ref
     // Format: "composio:{connectedAccountId}" or "composio:{wsId}:{slug}"
-    const parts = args.credentialsRef.split(":");
+    const credentialsRef = integration.credentialsRef ?? "";
+    const parts = credentialsRef.split(":");
     const composioAccountId = parts.length >= 2 ? parts[1] : null;
 
     // Revoke the Composio connected account if we have an ID

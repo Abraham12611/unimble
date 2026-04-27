@@ -45,6 +45,18 @@ export const verifyWorkspaceOwnerOrAdmin = internalQuery({
   },
 });
 
+/**
+ * Internal query: fetches an integration record by ID without
+ * workspace access checks. The calling action is responsible for
+ * verifying workspace ownership after receiving the record.
+ */
+export const getIntegrationById = internalQuery({
+  args: { id: v.id("integrations") },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.id);
+  },
+});
+
 // ---------------------------------------------------------------------------
 // Internal mutations — called from actions (auth already verified)
 // ---------------------------------------------------------------------------
