@@ -11,6 +11,14 @@
 import { v } from "convex/values";
 import { action, query, mutation } from "./_generated/server";
 import { requireWorkspaceAccess, requireWorkspaceOwnerOrAdmin } from "./lib/auth";
+import {
+  INTEGRATIONS,
+  INTEGRATION_CATEGORIES,
+  getActiveIntegrations,
+  getIntegrationBySlug,
+  type IntegrationCategory,
+  type IntegrationMeta,
+} from "./lib/integrationRegistry";
 
 // ---------------------------------------------------------------------------
 // Actions (external API calls via Composio SDK)
@@ -59,7 +67,73 @@ export const initiateToolkitAuth = action({
 });
 
 // ---------------------------------------------------------------------------
-// Queries (read from Convex DB)
+// Queries — Integration Registry (static catalog, no DB needed)
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns the full integration catalog with optional filtering.
+ * No auth required — this is public metadata.
+ */
+export const getIntegrationCatalog = query({
+  args: {
+    category: v.optional(v.string()),
+    search: v.optional(v.string()),
+    activeOnly: v.optional(v.boolean()),
+  },
+  handler: async (_ctx, args) => {
+    let results: IntegrationMeta[] = INTEGRATIONS;
+
+    if (args.activeOnly) {
+      results = getActiveIntegrations();
+    }
+
+    if (args.category) {
+      results = results.filter(
+        (i) =>
+          i.category === args.category ||
+          i.secondaryCategories?.includes(args.category as IntegrationCategory)
+      );
+    }
+
+    if (args.search) {
+      const lower = args.search.toLowerCase();
+      results = results.filter(
+        (i) =>
+          i.name.toLowerCase().includes(lower) ||
+          i.description.toLowerCase().includes(lower) ||
+          i.slug.includes(lower)
+      );
+    }
+
+    return results;
+  },
+});
+
+/**
+ * Returns all integration categories with labels and descriptions.
+ */
+export const getIntegrationCategories = query({
+  args: {},
+  handler: async () => {
+    return Object.entries(INTEGRATION_CATEGORIES).map(([key, value]) => ({
+      key,
+      ...value,
+    }));
+  },
+});
+
+/**
+ * Returns metadata for a single integration by slug.
+ */
+export const getIntegrationMeta = query({
+  args: { slug: v.string() },
+  handler: async (_ctx, args) => {
+    return getIntegrationBySlug(args.slug) ?? null;
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Queries — Workspace Integrations (from Convex DB)
 // ---------------------------------------------------------------------------
 
 /**
