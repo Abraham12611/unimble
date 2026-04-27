@@ -169,12 +169,20 @@ export async function llmComplete(
   messages: ChatMessage[],
   options: CompletionOptions = {}
 ): Promise<CompletionResult> {
+  const tier = options.tier ?? "generation";
+
+  // Guard: embedding models require a different endpoint
+  if (tier === "embedding") {
+    throw new Error(
+      "Use llmEmbed() for embedding models — llmComplete uses " +
+        "chat/completions which is not compatible with embedding models."
+    );
+  }
+
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
     throw new Error("OPENROUTER_API_KEY is not set. Add it to your environment.");
   }
-
-  const tier = options.tier ?? "generation";
   const config = MODEL_CONFIGS[tier];
   const model = options.model ?? config.primary;
   const maxTokens = options.maxTokens ?? config.maxTokens;
@@ -242,6 +250,90 @@ export async function llmPrompt(
   }
   messages.push({ role: "user", content: prompt });
   return llmComplete(messages, options);
+}
+
+// ---------------------------------------------------------------------------
+// Embedding
+// ---------------------------------------------------------------------------
+
+/** Result of an embedding request. */
+export interface EmbeddingResult {
+  /** The embedding vector */
+  embedding: number[];
+  /** Model used */
+  model: string;
+  /** Token usage */
+  usage: { promptTokens: number; totalTokens: number };
+  /** Estimated cost in USD */
+  cost: number;
+  /** Latency in milliseconds */
+  latencyMs: number;
+}
+
+/**
+ * Generates an embedding vector for the given text via OpenRouter.
+ *
+ * Uses the /embeddings endpoint (not /chat/completions).
+ * Supports automatic fallback if the primary model fails.
+ */
+export async function llmEmbed(
+  text: string,
+  options: { model?: string } = {}
+): Promise<EmbeddingResult> {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) {
+    throw new Error("OPENROUTER_API_KEY is not set. Add it to your environment.");
+  }
+
+  const config = MODEL_CONFIGS.embedding;
+  const model = options.model ?? config.primary;
+  const startTime = Date.now();
+
+  let response = await callEmbeddingEndpoint(apiKey, model, text);
+
+  // Fallback if primary fails and fallback is different
+  if (!response.ok && model !== config.fallback) {
+    response = await callEmbeddingEndpoint(apiKey, config.fallback, text);
+  }
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Embedding request failed: HTTP ${response.status}: ${errorText}`);
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data: any = await response.json();
+  const latencyMs = Date.now() - startTime;
+  const actualModel = data.model ?? model;
+  const promptTokens = data.usage?.prompt_tokens ?? 0;
+
+  return {
+    embedding: data.data?.[0]?.embedding ?? [],
+    model: actualModel,
+    usage: {
+      promptTokens,
+      totalTokens: data.usage?.total_tokens ?? promptTokens,
+    },
+    cost: estimateCost(actualModel, promptTokens, 0),
+    latencyMs,
+  };
+}
+
+async function callEmbeddingEndpoint(
+  apiKey: string,
+  model: string,
+  input: string
+): Promise<Response> {
+  return fetch("https://openrouter.ai/api/v1/embeddings", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": "https://unimble.app",
+      "X-Title": "Unimble",
+    },
+    body: JSON.stringify({ model, input }),
+  });
 }
 
 // ---------------------------------------------------------------------------

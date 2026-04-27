@@ -84,8 +84,9 @@ export type {
   CompletionOptions,
   CompletionResult,
   CostRecord,
+  EmbeddingResult,
 } from "./llm";
-export { MODEL_CONFIGS, llmComplete, llmPrompt } from "./llm";
+export { MODEL_CONFIGS, llmComplete, llmPrompt, llmEmbed } from "./llm";
 
 // Perplexity
 export type { PerplexityCitation, PerplexityResult, PerplexityOptions } from "./perplexity";
