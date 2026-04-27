@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useState, useMemo, useCallback, useEffect } from "react";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import {
   Plugs,
   MagnifyingGlass,
@@ -59,6 +59,16 @@ export default function IntegrationsPage() {
   const connectedToolkit = searchParams.get("connected");
   const callbackStatus = searchParams.get("status");
   const callbackError = searchParams.get("error");
+  const pathname = usePathname();
+
+  // Clear OAuth callback params from URL after displaying the toast
+  useEffect(() => {
+    if (!callbackStatus) return;
+    const timer = setTimeout(() => {
+      router.replace(pathname, { scroll: false });
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [callbackStatus, pathname, router]);
 
   // Queries — strip the virtual "__connected__" category before
   // sending to the backend (it's a frontend-only filter)

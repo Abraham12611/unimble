@@ -92,7 +92,16 @@ export function ConnectIntegrationModal({ slug, onClose }: { slug: string; onClo
     }
   }, [workspace, slug, apiKey, connectApiKey]);
 
-  if (!meta) {
+  if (meta === undefined) {
+    // Still loading — show backdrop with spinner so the click feels responsive
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+        <CircleNotch size={24} className="animate-spin text-[#555555]" />
+      </div>
+    );
+  }
+
+  if (meta === null) {
     return null;
   }
 
