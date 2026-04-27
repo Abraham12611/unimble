@@ -9,7 +9,6 @@ import {
   CheckCircle,
   Warning,
   XCircle,
-  ArrowClockwise,
   Trash,
   Clock,
   CircleNotch,
@@ -62,10 +61,27 @@ export default function IntegrationDetailPage() {
     }
   }, [integrationId, disconnectToolkit, router, wsSlug]);
 
-  if (!integration || !meta) {
+  // Loading state — queries still in flight
+  if (integration === undefined || meta === undefined) {
     return (
       <div className="flex items-center justify-center py-20">
         <CircleNotch size={24} className="animate-spin text-[#555555]" />
+      </div>
+    );
+  }
+
+  // Not found state — record doesn't exist or no access
+  if (integration === null || meta === null) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-20">
+        <Plugs size={32} className="text-[#555555]" />
+        <p className="text-[13px] text-[#888888]">Integration not found</p>
+        <Link
+          href={`/w/${wsSlug}/integrations`}
+          className="mt-2 rounded-[6px] border border-[#2A2A2A] bg-[#1C1C1C] px-4 py-2 text-[13px] font-medium text-[#F0F0F0] transition-colors hover:bg-[#222222]"
+        >
+          Back to Integrations
+        </Link>
       </div>
     );
   }
@@ -98,13 +114,6 @@ export default function IntegrationDetailPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            className="flex items-center gap-1.5 rounded-[6px] border border-[#2A2A2A] bg-[#1C1C1C] px-3 py-1.5 text-[12px] font-medium text-[#888888] transition-colors hover:bg-[#222222] hover:text-[#F0F0F0]"
-          >
-            <ArrowClockwise size={12} />
-            Test Connection
-          </button>
           <button
             type="button"
             onClick={() => setShowConfirmDisconnect(true)}

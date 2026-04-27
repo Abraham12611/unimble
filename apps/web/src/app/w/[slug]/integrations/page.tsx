@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import {
   Plugs,
   MagnifyingGlass,
@@ -47,8 +47,9 @@ type ConnectedIntegration = {
 // ---------------------------------------------------------------------------
 
 export default function IntegrationsPage() {
-  const { workspace } = useWorkspaceContext();
+  const { workspace, slug: wsSlug } = useWorkspaceContext();
   const searchParams = useSearchParams();
+  const router = useRouter();
 
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
@@ -59,9 +60,12 @@ export default function IntegrationsPage() {
   const callbackStatus = searchParams.get("status");
   const callbackError = searchParams.get("error");
 
-  // Queries
+  // Queries — strip the virtual "__connected__" category before
+  // sending to the backend (it's a frontend-only filter)
+  const catalogCategory =
+    activeCategory && activeCategory !== "__connected__" ? activeCategory : undefined;
   const catalog = useIntegrationCatalog({
-    category: activeCategory ?? undefined,
+    category: catalogCategory,
     search: search || undefined,
   });
   const categories = useIntegrationCategories();
@@ -83,6 +87,13 @@ export default function IntegrationsPage() {
   const handleConnect = useCallback((slug: string) => {
     setConnectSlug(slug);
   }, []);
+
+  const handleManage = useCallback(
+    (connectionId: string) => {
+      router.push(`/w/${wsSlug}/integrations/${connectionId}`);
+    },
+    [router, wsSlug]
+  );
 
   return (
     <div className="space-y-6">
@@ -191,6 +202,7 @@ export default function IntegrationsPage() {
                     item={item}
                     connection={connectedMap.get(item.slug)}
                     onConnect={handleConnect}
+                    onManage={handleManage}
                   />
                 ))
             : catalog.map((item: CatalogItem) => (
@@ -199,6 +211,7 @@ export default function IntegrationsPage() {
                   item={item}
                   connection={connectedMap.get(item.slug)}
                   onConnect={handleConnect}
+                  onManage={handleManage}
                 />
               ))}
       </div>
@@ -226,10 +239,12 @@ function IntegrationCard({
   item,
   connection,
   onConnect,
+  onManage,
 }: {
   item: CatalogItem;
   connection?: ConnectedIntegration;
   onConnect: (slug: string) => void;
+  onManage: (connectionId: string) => void;
 }) {
   const isConnected = Boolean(connection);
   const isComingSoon = item.status === "coming_soon";
@@ -269,7 +284,7 @@ function IntegrationCard({
         {isConnected ? (
           <button
             type="button"
-            onClick={() => onConnect(item.slug)}
+            onClick={() => onManage(connection!._id)}
             className="flex w-full items-center justify-center gap-1.5 rounded-[6px] border border-[#2A2A2A] bg-[#1A1A1A] px-3 py-1.5 text-[12px] font-medium text-[#888888] transition-colors hover:bg-[#222222] hover:text-[#F0F0F0]"
           >
             <ArrowClockwise size={12} />
