@@ -4,6 +4,9 @@
  * Wraps Convex queries, mutations, and actions for the integrations
  * feature. Provides type-safe access to the integration catalog,
  * workspace connections, and OAuth/API-key flows.
+ *
+ * Note: Actions are in the `integrationActions` module (Node.js runtime),
+ * while queries/mutations are in the `integrations` module.
  */
 
 import { anyApi } from "convex/server";
@@ -65,25 +68,25 @@ export function useDeleteIntegration() {
 }
 
 // ---------------------------------------------------------------------------
-// Actions (external API calls)
+// Actions (from integrationActions module — Node.js runtime)
 // ---------------------------------------------------------------------------
 
 export function useTestComposioConnection() {
-  return useAction(anyApi.integrations.testComposioConnection);
+  return useAction(anyApi.integrationActions.testComposioConnection);
 }
 
 export function useGetToolkitStatuses() {
-  return useAction(anyApi.integrations.getToolkitStatuses);
+  return useAction(anyApi.integrationActions.getToolkitStatuses);
 }
 
 export function useInitiateToolkitAuth() {
-  return useAction(anyApi.integrations.initiateToolkitAuth);
+  return useAction(anyApi.integrationActions.initiateToolkitAuth);
 }
 
 export function useValidateApiKey() {
-  return useAction(anyApi.integrations.validateApiKey);
+  return useAction(anyApi.integrationActions.validateApiKey);
 }
 
 export function useConnectWithApiKey() {
-  return useAction(anyApi.integrations.connectWithApiKey);
+  return useAction(anyApi.integrationActions.connectWithApiKey);
 }

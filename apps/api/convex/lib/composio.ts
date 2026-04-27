@@ -1,3 +1,5 @@
+"use node";
+
 /**
  * Composio client wrapper for Unimble.
  *

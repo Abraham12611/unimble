@@ -1,15 +1,12 @@
 /**
- * Integration management module.
+ * Integration management module — queries, mutations, and internal helpers.
  *
- * Handles Composio-powered external service connections,
- * OAuth flows, API key storage, and toolkit status queries.
- *
- * All external API calls use Convex **actions** (not queries/mutations)
- * because they make HTTP requests to Composio's API.
+ * Composio SDK actions are in integrationActions.ts (requires "use node").
+ * This file contains all DB operations and the static registry queries.
  */
 
 import { v } from "convex/values";
-import { action, query, mutation } from "./_generated/server";
+import { internalMutation, internalQuery, query, mutation } from "./_generated/server";
 import { requireWorkspaceAccess, requireWorkspaceOwnerOrAdmin } from "./lib/auth";
 import {
   INTEGRATIONS,
@@ -21,131 +18,82 @@ import {
 } from "./lib/integrationRegistry";
 
 // ---------------------------------------------------------------------------
-// Actions (external API calls via Composio SDK)
+// Internal queries — used by actions for auth verification
 // ---------------------------------------------------------------------------
 
 /**
- * Tests the Composio API connection.
- * Only callable by authenticated users.
+ * Internal query: verifies the caller has workspace membership.
+ * Called from actions via ctx.runQuery.
  */
-export const testComposioConnection = action({
-  args: {},
-  handler: async (): Promise<{ ok: boolean; message: string }> => {
-    const { testComposioConnection: test } = await import("./lib/composio");
-    return await test();
+export const verifyWorkspaceAccess = internalQuery({
+  args: { workspaceId: v.id("workspaces") },
+  handler: async (ctx, args) => {
+    await requireWorkspaceAccess(ctx, args.workspaceId);
+    return true;
   },
 });
 
 /**
- * Lists toolkit connection statuses for a workspace.
- * Each workspace maps to a Composio user_id.
+ * Internal query: verifies the caller is workspace owner or admin.
+ * Called from actions via ctx.runQuery.
  */
-export const getToolkitStatuses = action({
-  args: {
-    workspaceId: v.string(),
-    toolkitSlugs: v.optional(v.array(v.string())),
-  },
-  handler: async (_ctx, args) => {
-    const { getToolkitStatuses: getStatuses } = await import("./lib/composio");
-    return await getStatuses(args.workspaceId, args.toolkitSlugs);
+export const verifyWorkspaceOwnerOrAdmin = internalQuery({
+  args: { workspaceId: v.id("workspaces") },
+  handler: async (ctx, args) => {
+    await requireWorkspaceOwnerOrAdmin(ctx, args.workspaceId);
+    return true;
   },
 });
 
-/**
- * Initiates an OAuth authorization flow for a toolkit.
- * Returns a redirect URL the user should visit.
- */
-export const initiateToolkitAuth = action({
-  args: {
-    workspaceId: v.string(),
-    toolkitSlug: v.string(),
-  },
-  handler: async (_ctx, args) => {
-    const { initiateToolkitAuth: initAuth } = await import("./lib/composio");
-    return await initAuth(args.workspaceId, args.toolkitSlug);
-  },
-});
+// ---------------------------------------------------------------------------
+// Internal mutations — called from actions (auth already verified)
+// ---------------------------------------------------------------------------
 
 /**
- * Validates an API key by attempting to create a Composio connected
- * account for the given toolkit. If the key is valid, returns success.
- *
- * Returns { ok, message, connectedAccountId }.
+ * Internal mutation: upserts an integration record.
+ * Called from connectWithApiKey action after auth is already verified.
  */
-export const validateApiKey = action({
-  args: {
-    workspaceId: v.string(),
-    toolkitSlug: v.string(),
-    apiKey: v.string(),
-    authConfigId: v.optional(v.string()),
-  },
-  handler: async (
-    _ctx,
-    args
-  ): Promise<{
-    ok: boolean;
-    message: string;
-    connectedAccountId?: string;
-  }> => {
-    const { validateApiKeyConnection } = await import("./lib/composio");
-    return await validateApiKeyConnection(
-      args.workspaceId,
-      args.toolkitSlug,
-      args.apiKey,
-      args.authConfigId
-    );
-  },
-});
-
-/**
- * Connects an API-key-based integration end-to-end:
- * 1. Validates the key via Composio
- * 2. Stores the integration record in the local DB
- *
- * This is a convenience action that combines validation + storage.
- */
-export const connectWithApiKey = action({
+export const upsertIntegrationInternal = internalMutation({
   args: {
     workspaceId: v.id("workspaces"),
-    toolkitSlug: v.string(),
-    apiKey: v.string(),
-    authConfigId: v.optional(v.string()),
+    provider: v.string(),
+    name: v.string(),
+    credentialsRef: v.optional(v.string()),
+    config: v.optional(v.any()),
+    status: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    // Step 1: Validate the API key via Composio
-    const { validateApiKeyConnection } = await import("./lib/composio");
-    const validation = await validateApiKeyConnection(
-      args.workspaceId,
-      args.toolkitSlug,
-      args.apiKey,
-      args.authConfigId
-    );
+    const now = Date.now();
 
-    if (!validation.ok) {
-      return { ok: false, message: validation.message };
+    const existing = await ctx.db
+      .query("integrations")
+      .withIndex("by_workspace_and_provider", (q) =>
+        q.eq("workspaceId", args.workspaceId).eq("provider", args.provider)
+      )
+      .unique();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        name: args.name,
+        credentialsRef: args.credentialsRef,
+        config: args.config,
+        status: args.status ?? "active",
+        updatedAt: now,
+      });
+      return existing._id;
     }
 
-    // Step 2: Store the integration record
-    // We store a reference identifier, never the raw API key.
-    // The actual key is managed by Composio's connected accounts.
-    const { getIntegrationBySlug: getBySlug } = await import("./lib/integrationRegistry");
-    const meta = getBySlug(args.toolkitSlug);
-
-    await ctx.runMutation(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      "integrations:upsertIntegration" as any,
-      {
-        workspaceId: args.workspaceId,
-        provider: args.toolkitSlug,
-        name: meta?.name ?? args.toolkitSlug,
-        credentialsRef: validation.connectedAccountId
-          ? `composio:${validation.connectedAccountId}`
-          : `composio:${args.workspaceId}:${args.toolkitSlug}`,
-        status: "active",
-      }
-    );
-
-    return { ok: true, message: validation.message };
+    return await ctx.db.insert("integrations", {
+      workspaceId: args.workspaceId,
+      provider: args.provider,
+      name: args.name,
+      credentialsRef: args.credentialsRef,
+      config: args.config,
+      status: args.status ?? "active",
+      lastUsedAt: undefined,
+      createdAt: now,
+      updatedAt: now,
+    });
   },
 });
 
@@ -221,7 +169,6 @@ export const getIntegrationMeta = query({
 
 /**
  * Lists all integrations for a workspace from the local DB.
- * This is the cached/persisted view of connected integrations.
  */
 export const listIntegrations = query({
   args: { workspaceId: v.id("workspaces") },
@@ -271,12 +218,12 @@ export const getIntegrationByProvider = query({
 });
 
 // ---------------------------------------------------------------------------
-// Mutations (write to Convex DB)
+// Mutations (write to Convex DB — client-facing)
 // ---------------------------------------------------------------------------
 
 /**
- * Creates or updates a local integration record after a successful connection.
- * Called after OAuth callback or API key validation succeeds.
+ * Creates or updates a local integration record.
+ * Called directly from the client after OAuth callback success.
  */
 export const upsertIntegration = mutation({
   args: {
@@ -292,7 +239,6 @@ export const upsertIntegration = mutation({
 
     const now = Date.now();
 
-    // Check if integration already exists for this workspace + provider
     const existing = await ctx.db
       .query("integrations")
       .withIndex("by_workspace_and_provider", (q) =>
