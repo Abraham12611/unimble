@@ -9,8 +9,10 @@
  * Architecture:
  * - A single master key (CREDENTIAL_ENCRYPTION_KEY env var) is used
  *   as the root secret.
- * - Per-workspace encryption keys are derived using HKDF (HMAC-based
- *   Key Derivation Function) with the workspace ID as context.
+ * - Per-workspace encryption keys are derived using HMAC-SHA256
+ *   with the workspace ID as context. (Note: this is plain HMAC,
+ *   not formal HKDF per RFC 5869 — sufficient for our use case
+ *   but should be noted for security audits.)
  * - Each encrypted value includes a random IV and auth tag, making
  *   every ciphertext unique even for identical plaintext.
  *
@@ -36,7 +38,7 @@ const KEY_LENGTH = 32; // 256 bits
 
 /**
  * Derives a workspace-scoped encryption key from the master key
- * using HMAC-SHA256 as a simple KDF.
+ * using HMAC-SHA256 as a KDF.
  *
  * This ensures each workspace has a unique encryption key, so
  * compromising one workspace's data doesn't expose others.
@@ -122,6 +124,10 @@ export function decryptCredential(encrypted: string, workspaceId: string): strin
 
   if (iv.length !== IV_LENGTH) {
     throw new Error("Invalid IV length");
+  }
+
+  if (authTag.length !== 16) {
+    throw new Error("Invalid auth tag length");
   }
 
   const key = deriveWorkspaceKey(workspaceId);

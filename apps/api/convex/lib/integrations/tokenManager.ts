@@ -30,6 +30,8 @@ export interface TokenHealth {
   /** Whether the token is currently valid and usable */
   isValid: boolean;
   /** Whether the token is approaching expiry (< 24h remaining) */
+  // TODO(phase-6): Implement expiry detection when Composio exposes
+  // token expiry timestamps. Currently always false.
   isExpiringSoon: boolean;
   /** Whether the token has already expired */
   isExpired: boolean;
@@ -183,6 +185,9 @@ export async function refreshToken(
     }
 
     // For expiring-soon tokens, Composio should auto-refresh
+    // TODO(phase-6): This branch is currently unreachable because
+    // isExpiringSoon is always false. Will be activated when expiry
+    // detection is implemented with Composio token timestamps.
     // We trigger a session creation to prompt the refresh
     const session = await createComposioSession(workspaceId, [toolkitSlug]);
     const toolkits = await session.toolkits({
