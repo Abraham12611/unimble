@@ -254,7 +254,7 @@ export function detectCircularDependencies(steps: Array<{ id: string; dependsOn?
 
   function dfs(nodeId: string): boolean {
     if (inStack.has(nodeId)) {
-      // Found a cycle
+      // Found a cycle — slice path to only include the cycle
       return true;
     }
     if (visited.has(nodeId)) return false;
@@ -275,7 +275,12 @@ export function detectCircularDependencies(steps: Array<{ id: string; dependsOn?
   for (const step of steps) {
     if (!visited.has(step.id)) {
       if (dfs(step.id)) {
-        return { hasCycle: true, cycle: [...path] };
+        // Slice path to start from the repeated node
+        const cycleStart = path.indexOf(path.find((n) => inStack.has(n)) ?? path[0]);
+        return {
+          hasCycle: true,
+          cycle: path.slice(cycleStart),
+        };
       }
     }
   }

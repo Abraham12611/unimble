@@ -29,11 +29,12 @@ const EXECUTION_TRANSITIONS: Record<ExecutionStatus, Set<ExecutionStatus>> = {
 
 /** Valid step state transitions. */
 const STEP_TRANSITIONS: Record<StepStatus, Set<StepStatus>> = {
-  queued: new Set(["running", "skipped"]),
-  running: new Set(["completed", "failed"]),
+  queued: new Set(["running", "skipped", "canceled"]),
+  running: new Set(["completed", "failed", "canceled"]),
   completed: new Set(), // terminal
   failed: new Set(), // terminal
   skipped: new Set(), // terminal
+  canceled: new Set(), // terminal
 };
 
 // ---------------------------------------------------------------------------
@@ -149,7 +150,8 @@ export function classifyError(error: unknown): ClassifiedError {
       msg.includes("403") ||
       msg.includes("unauthorized") ||
       msg.includes("forbidden") ||
-      msg.includes("auth")
+      msg.includes("authentication") ||
+      msg.includes("authorization")
     ) {
       return {
         category: "auth_error",
@@ -173,6 +175,21 @@ export function classifyError(error: unknown): ClassifiedError {
     if (msg.includes("404") || msg.includes("not found")) {
       return {
         category: "not_found",
+        message: error.message,
+        retryable: false,
+        originalError: error,
+      };
+    }
+
+    // Budget exceeded
+    if (
+      msg.includes("budget") ||
+      msg.includes("quota") ||
+      msg.includes("limit exceeded") ||
+      msg.includes("spending")
+    ) {
+      return {
+        category: "budget_exceeded",
         message: error.message,
         retryable: false,
         originalError: error,
@@ -220,8 +237,8 @@ export function shouldRetry(
   // Check explicit fail-on list
   if (policy.failOn?.includes(classified.category)) return false;
 
-  // Check explicit retry-on list
-  if (policy.retryOn?.length) {
+  // Check explicit retry-on list ([] means "retry nothing")
+  if (policy.retryOn !== undefined) {
     return policy.retryOn.includes(classified.category);
   }
 

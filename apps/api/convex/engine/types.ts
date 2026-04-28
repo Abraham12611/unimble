@@ -20,7 +20,7 @@ export type ExecutionStatus =
   | "failed"
   | "canceled";
 
-export type StepStatus = "queued" | "running" | "completed" | "failed" | "skipped";
+export type StepStatus = "queued" | "running" | "completed" | "failed" | "skipped" | "canceled";
 
 export const TERMINAL_EXECUTION_STATUSES = new Set<ExecutionStatus>([
   "completed",
@@ -28,7 +28,12 @@ export const TERMINAL_EXECUTION_STATUSES = new Set<ExecutionStatus>([
   "canceled",
 ]);
 
-export const TERMINAL_STEP_STATUSES = new Set<StepStatus>(["completed", "failed", "skipped"]);
+export const TERMINAL_STEP_STATUSES = new Set<StepStatus>([
+  "completed",
+  "failed",
+  "skipped",
+  "canceled",
+]);
 
 // ---------------------------------------------------------------------------
 // Step types
