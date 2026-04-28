@@ -6,5 +6,6 @@ import "./workspaces.test";
 import "./operators.test";
 import "./workflows.test";
 import "./executions.test";
+import "./integrations.test";
 
 export {};
