@@ -27,20 +27,100 @@ import { internalMutation, internalQuery } from "../_generated/server";
  *
  * Supports standard 5-field cron: minute hour day-of-month month day-of-week
  * Supports: numbers, ranges (1-5), lists (1,3,5), wildcards (*), steps (x/n)
+ *
+ * @param cron - The cron expression
+ * @param date - The date to check
+ * @param timezone - Optional IANA timezone (e.g. "America/New_York").
+ *   If provided, the date is interpreted in that timezone.
+ *   If omitted, UTC is used.
  */
-export function cronMatches(cron: string, date: Date): boolean {
+export function cronMatches(cron: string, date: Date, timezone?: string): boolean {
   const parts = cron.trim().split(/\s+/);
   if (parts.length !== 5) return false;
 
   const [minExpr, hourExpr, domExpr, monExpr, dowExpr] = parts;
 
+  // Get date components in the target timezone
+  const { minute, hour, day, month, weekday } = getDateComponents(date, timezone);
+
   return (
-    fieldMatches(minExpr, date.getUTCMinutes(), 0, 59) &&
-    fieldMatches(hourExpr, date.getUTCHours(), 0, 23) &&
-    fieldMatches(domExpr, date.getUTCDate(), 1, 31) &&
-    fieldMatches(monExpr, date.getUTCMonth() + 1, 1, 12) &&
-    fieldMatches(dowExpr, date.getUTCDay(), 0, 6)
+    fieldMatches(minExpr, minute, 0, 59) &&
+    fieldMatches(hourExpr, hour, 0, 23) &&
+    fieldMatches(domExpr, day, 1, 31) &&
+    fieldMatches(monExpr, month, 1, 12) &&
+    fieldMatches(dowExpr, weekday, 0, 6)
   );
+}
+
+/**
+ * Extracts date components in a given timezone using Intl API.
+ * Falls back to UTC if the timezone is invalid or not provided.
+ */
+function getDateComponents(
+  date: Date,
+  timezone?: string
+): {
+  minute: number;
+  hour: number;
+  day: number;
+  month: number;
+  weekday: number;
+} {
+  if (!timezone) {
+    return {
+      minute: date.getUTCMinutes(),
+      hour: date.getUTCHours(),
+      day: date.getUTCDate(),
+      month: date.getUTCMonth() + 1,
+      weekday: date.getUTCDay(),
+    };
+  }
+
+  try {
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "numeric",
+      day: "numeric",
+      hour: "numeric",
+      minute: "numeric",
+      weekday: "short",
+      hour12: false,
+    });
+
+    const partsMap = new Map<string, string>();
+    for (const part of formatter.formatToParts(date)) {
+      partsMap.set(part.type, part.value);
+    }
+
+    const weekdayStr = partsMap.get("weekday") ?? "";
+    const weekdayMap: Record<string, number> = {
+      Sun: 0,
+      Mon: 1,
+      Tue: 2,
+      Wed: 3,
+      Thu: 4,
+      Fri: 5,
+      Sat: 6,
+    };
+
+    return {
+      minute: parseInt(partsMap.get("minute") ?? "0", 10),
+      hour: parseInt(partsMap.get("hour") ?? "0", 10),
+      day: parseInt(partsMap.get("day") ?? "1", 10),
+      month: parseInt(partsMap.get("month") ?? "1", 10),
+      weekday: weekdayMap[weekdayStr] ?? date.getUTCDay(),
+    };
+  } catch {
+    // Invalid timezone — fall back to UTC
+    return {
+      minute: date.getUTCMinutes(),
+      hour: date.getUTCHours(),
+      day: date.getUTCDate(),
+      month: date.getUTCMonth() + 1,
+      weekday: date.getUTCDay(),
+    };
+  }
 }
 
 function fieldMatches(expr: string, value: number, min: number, max: number): boolean {
@@ -81,7 +161,7 @@ function fieldMatches(expr: string, value: number, min: number, max: number): bo
  * Calculates the next run time for a cron expression.
  * Scans forward minute-by-minute up to 7 days.
  */
-export function getNextRunTime(cron: string, after: Date): Date | null {
+export function getNextRunTime(cron: string, after: Date, timezone?: string): Date | null {
   const maxMinutes = 7 * 24 * 60; // 7 days
   const candidate = new Date(after.getTime());
   // Start from the next minute
@@ -89,7 +169,7 @@ export function getNextRunTime(cron: string, after: Date): Date | null {
   candidate.setUTCMinutes(candidate.getUTCMinutes() + 1);
 
   for (let i = 0; i < maxMinutes; i++) {
-    if (cronMatches(cron, candidate)) {
+    if (cronMatches(cron, candidate, timezone)) {
       return candidate;
     }
     candidate.setUTCMinutes(candidate.getUTCMinutes() + 1);
@@ -197,7 +277,7 @@ export const triggerScheduledWorkflow = internalMutation({
       });
 
       // Calculate next run time
-      const nextRun = getNextRunTime(trigger.cron, new Date(now));
+      const nextRun = getNextRunTime(trigger.cron, new Date(now), trigger.timezone);
 
       await ctx.db.patch(wf._id, {
         trigger: {
@@ -211,20 +291,5 @@ export const triggerScheduledWorkflow = internalMutation({
     }
 
     return { triggered };
-  },
-});
-
-/**
- * Internal mutation: initializes the nextRunAt for a workflow
- * when its schedule trigger is first set or updated.
- */
-export const initializeSchedule = internalMutation({
-  args: {},
-  handler: async () => {
-    // This is called when a workflow's trigger is set to "schedule"
-    // The caller passes the workflowId via scheduler
-    // For now this is a placeholder — the actual initialization
-    // happens in the workflow create/update mutations
-    return { ok: true };
   },
 });

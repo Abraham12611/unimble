@@ -7,7 +7,7 @@
  */
 
 import { v } from "convex/values";
-import { createHmac, timingSafeEqual } from "crypto";
+import { createHmac, timingSafeEqual, randomBytes } from "crypto";
 import { internalMutation } from "../_generated/server";
 
 // ---------------------------------------------------------------------------
@@ -16,11 +16,6 @@ import { internalMutation } from "../_generated/server";
 
 /**
  * Verifies an HMAC-SHA256 webhook signature.
- *
- * @param payload - The raw request body
- * @param signature - The signature from the request header
- * @param secret - The webhook secret
- * @returns Whether the signature is valid
  */
 export function verifyWebhookSignature(
   payload: string,
@@ -44,27 +39,17 @@ export function verifyWebhookSignature(
 }
 
 /**
- * Generates a unique webhook path for a workflow.
+ * Generates a unique webhook path using crypto.randomBytes.
  */
 export function generateWebhookPath(): string {
-  const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
-  let path = "wh_";
-  for (let i = 0; i < 24; i++) {
-    path += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return path;
+  return "wh_" + randomBytes(16).toString("hex");
 }
 
 /**
- * Generates a webhook signing secret.
+ * Generates a webhook signing secret using crypto.randomBytes.
  */
 export function generateWebhookSecret(): string {
-  const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  let secret = "whsec_";
-  for (let i = 0; i < 32; i++) {
-    secret += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return secret;
+  return "whsec_" + randomBytes(24).toString("base64url");
 }
 
 // ---------------------------------------------------------------------------
@@ -103,10 +88,13 @@ export const handleWebhookTrigger = internalMutation({
       return { ok: false, error: "No matching workflow found" };
     }
 
-    // Verify signature if secret is configured
+    // Verify signature — reject if secret is set but signature is missing
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const trigger = workflow.trigger as any;
-    if (trigger.secret && args.signature) {
+    if (trigger.secret) {
+      if (!args.signature) {
+        return { ok: false, error: "Missing webhook signature" };
+      }
       const payloadStr =
         typeof args.payload === "string" ? args.payload : JSON.stringify(args.payload);
       const valid = verifyWebhookSignature(payloadStr, args.signature, trigger.secret);

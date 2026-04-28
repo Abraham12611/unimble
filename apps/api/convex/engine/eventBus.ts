@@ -12,8 +12,81 @@
  */
 
 import { v } from "convex/values";
+import type { MutationCtx } from "../_generated/server";
 import { internalMutation, mutation } from "../_generated/server";
 import { requireWorkspaceMember } from "../lib/auth";
+import type { Id } from "../_generated/dataModel";
+
+// ---------------------------------------------------------------------------
+// Shared helper — trigger matching
+// ---------------------------------------------------------------------------
+
+/**
+ * Finds active workflows matching an event type in a workspace
+ * and creates execution records for each match.
+ */
+async function triggerMatchingWorkflows(
+  ctx: MutationCtx,
+  workspaceId: Id<"workspaces">,
+  eventType: string,
+  eventData: unknown,
+  eventId: Id<"events">
+): Promise<number> {
+  const now = Date.now();
+
+  const workflows = await ctx.db
+    .query("workflows")
+    .withIndex("by_workspace_and_status", (q) =>
+      q.eq("workspaceId", workspaceId).eq("status", "active")
+    )
+    .order("desc")
+    .take(1000);
+
+  let triggered = 0;
+
+  for (const wf of workflows) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const trigger = wf.trigger as any;
+    if (
+      trigger?.type !== "event" ||
+      trigger?.enabled !== true ||
+      trigger?.eventType !== eventType
+    ) {
+      continue;
+    }
+
+    if (trigger.filter && eventData) {
+      if (!matchesFilter(trigger.filter, eventData)) {
+        continue;
+      }
+    }
+
+    await ctx.db.insert("executions", {
+      workspaceId,
+      workflowId: wf._id,
+      operatorId: wf.operatorId,
+      status: "queued",
+      input: {
+        triggeredBy: "event",
+        eventType,
+        eventData,
+        eventId,
+      },
+      output: undefined,
+      error: undefined,
+      startedAt: now,
+      completedAt: undefined,
+      duration: undefined,
+      cost: undefined,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    triggered++;
+  }
+
+  return triggered;
+}
 
 // ---------------------------------------------------------------------------
 // Event emission
@@ -21,9 +94,7 @@ import { requireWorkspaceMember } from "../lib/auth";
 
 /**
  * Emits an internal event and triggers matching workflows.
- *
- * This is the primary way operators and system components
- * trigger event-driven workflows.
+ * Used by operators and system components.
  */
 export const emitEvent = internalMutation({
   args: {
@@ -37,7 +108,6 @@ export const emitEvent = internalMutation({
   handler: async (ctx, args) => {
     const now = Date.now();
 
-    // 1. Persist the event
     const eventId = await ctx.db.insert("events", {
       workspaceId: args.workspaceId,
       userId: args.userId,
@@ -49,59 +119,13 @@ export const emitEvent = internalMutation({
       timestamp: now,
     });
 
-    // 2. Find workflows with matching event triggers
-    const workflows = await ctx.db
-      .query("workflows")
-      .withIndex("by_workspace_and_status", (q) =>
-        q.eq("workspaceId", args.workspaceId).eq("status", "active")
-      )
-      .order("desc")
-      .take(1000);
-
-    let triggered = 0;
-
-    for (const wf of workflows) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const trigger = wf.trigger as any;
-      if (
-        trigger?.type !== "event" ||
-        trigger?.enabled !== true ||
-        trigger?.eventType !== args.eventType
-      ) {
-        continue;
-      }
-
-      // Check optional filter
-      if (trigger.filter && args.data) {
-        if (!matchesFilter(trigger.filter, args.data)) {
-          continue;
-        }
-      }
-
-      // 3. Create execution
-      await ctx.db.insert("executions", {
-        workspaceId: args.workspaceId,
-        workflowId: wf._id,
-        operatorId: wf.operatorId,
-        status: "queued",
-        input: {
-          triggeredBy: "event",
-          eventType: args.eventType,
-          eventData: args.data,
-          eventId,
-        },
-        output: undefined,
-        error: undefined,
-        startedAt: now,
-        completedAt: undefined,
-        duration: undefined,
-        cost: undefined,
-        createdAt: now,
-        updatedAt: now,
-      });
-
-      triggered++;
-    }
+    const triggered = await triggerMatchingWorkflows(
+      ctx,
+      args.workspaceId,
+      args.eventType,
+      args.data,
+      eventId
+    );
 
     return { eventId, triggered };
   },
@@ -109,7 +133,6 @@ export const emitEvent = internalMutation({
 
 /**
  * Public mutation: emit an event (requires workspace membership).
- * Used by the frontend or external callers.
  */
 export const emitWorkspaceEvent = mutation({
   args: {
@@ -124,7 +147,6 @@ export const emitWorkspaceEvent = mutation({
 
     const now = Date.now();
 
-    // Persist the event
     const eventId = await ctx.db.insert("events", {
       workspaceId: args.workspaceId,
       userId: user._id,
@@ -136,57 +158,13 @@ export const emitWorkspaceEvent = mutation({
       timestamp: now,
     });
 
-    // Find and trigger matching workflows
-    const workflows = await ctx.db
-      .query("workflows")
-      .withIndex("by_workspace_and_status", (q) =>
-        q.eq("workspaceId", args.workspaceId).eq("status", "active")
-      )
-      .order("desc")
-      .take(1000);
-
-    let triggered = 0;
-
-    for (const wf of workflows) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const trigger = wf.trigger as any;
-      if (
-        trigger?.type !== "event" ||
-        trigger?.enabled !== true ||
-        trigger?.eventType !== args.eventType
-      ) {
-        continue;
-      }
-
-      if (trigger.filter && args.data) {
-        if (!matchesFilter(trigger.filter, args.data)) {
-          continue;
-        }
-      }
-
-      await ctx.db.insert("executions", {
-        workspaceId: args.workspaceId,
-        workflowId: wf._id,
-        operatorId: wf.operatorId,
-        status: "queued",
-        input: {
-          triggeredBy: "event",
-          eventType: args.eventType,
-          eventData: args.data,
-          eventId,
-        },
-        output: undefined,
-        error: undefined,
-        startedAt: now,
-        completedAt: undefined,
-        duration: undefined,
-        cost: undefined,
-        createdAt: now,
-        updatedAt: now,
-      });
-
-      triggered++;
-    }
+    const triggered = await triggerMatchingWorkflows(
+      ctx,
+      args.workspaceId,
+      args.eventType,
+      args.data,
+      eventId
+    );
 
     return { eventId, triggered };
   },
@@ -196,13 +174,6 @@ export const emitWorkspaceEvent = mutation({
 // Filter matching
 // ---------------------------------------------------------------------------
 
-/**
- * Simple filter matching: checks if event data matches all
- * key-value pairs in the filter object.
- *
- * Supports flat key-value equality only. Nested/complex filters
- * can be added later.
- */
 function matchesFilter(
   filter: Record<string, unknown>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
