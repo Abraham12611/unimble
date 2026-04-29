@@ -595,14 +595,19 @@ async function handleTransformStep(stepCtx: StepContext): Promise<unknown> {
     resolvedInputs[key] = resolveInputs(ref, stepCtx.stepOutputs, undefined, stepCtx.config);
   }
 
-  // Evaluate the expression with resolved inputs as context
-  // Using Function constructor for sandboxed evaluation
+  // Evaluate the expression in an isolated V8 context via vm.runInNewContext.
+  // This prevents access to Node.js globals (process, require, global, etc.)
+  // that would be available with `new Function()`.
   try {
-    const fn = new Function(
-      ...Object.keys(resolvedInputs),
-      `"use strict"; return (${config.expression});`
-    );
-    const result = fn(...Object.values(resolvedInputs));
+    const vm = await import("node:vm");
+
+    // Build a sandbox with only the resolved inputs — no globals
+    const sandbox: Record<string, unknown> = { ...resolvedInputs };
+
+    const result = vm.runInNewContext(`"use strict"; (${config.expression})`, sandbox, {
+      timeout: 5_000,
+      filename: "transform-step",
+    });
     return { result };
   } catch (error) {
     throw new Error(

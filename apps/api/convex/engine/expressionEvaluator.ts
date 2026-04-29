@@ -47,9 +47,9 @@ export function evaluateExpression(
 
     switch (op.trim()) {
       case "==":
-        return left == right;
+        return left === right;
       case "!=":
-        return left != right;
+        return left !== right;
       case ">":
         return Number(left) > Number(right);
       case "<":

@@ -391,10 +391,10 @@ export const executeStepAction = internalMutation({
   },
   handler: async (ctx, args) => {
     // This mutation delegates to the step handler action.
-    // The action file (stepHandlers.ts) will import and use this.
-    // For now, schedule the action via the Convex scheduler.
-    const { api } = await import("../_generated/api");
-    await ctx.scheduler.runAfter(0, api.engine.stepHandlers.runStep, {
+    // The action file (stepHandlers.ts) registers runStep as an
+    // internalAction, so we must use `internal` (not `api`).
+    const { internal } = await import("../_generated/api");
+    await ctx.scheduler.runAfter(0, internal.engine.stepHandlers.runStep, {
       executionId: args.executionId,
       stepRecordId: args.stepRecordId,
       stepContext: args.stepContext,
@@ -470,10 +470,23 @@ export const failStep = internalMutation({
     const retryPolicy = resolveRetryPolicy(stepDef?.retry ?? definition?.defaultRetry);
     const currentRetry = stepRecord.retryCount ?? 0;
 
-    // Check if we should retry
-    const isRetryable = args.errorCategory
-      ? (retryPolicy.retryOn?.includes(args.errorCategory) ?? false)
-      : currentRetry < retryPolicy.maxAttempts;
+    // Check if we should retry.
+    // When retryOn is configured, only retry errors in that list.
+    // When retryOn is absent, fall back to the classified error's
+    // retryable flag (which covers the default categories).
+    const classified = args.errorCategory ?? "unknown";
+    let isRetryable: boolean;
+
+    if (retryPolicy.failOn?.includes(classified)) {
+      // Explicitly non-retryable
+      isRetryable = false;
+    } else if (retryPolicy.retryOn && retryPolicy.retryOn.length > 0) {
+      // Explicit allow-list — only retry if category is listed
+      isRetryable = retryPolicy.retryOn.includes(classified);
+    } else {
+      // No allow-list — retry if under max attempts
+      isRetryable = currentRetry < retryPolicy.maxAttempts;
+    }
 
     if (isRetryable && currentRetry < retryPolicy.maxAttempts) {
       // Re-queue for retry

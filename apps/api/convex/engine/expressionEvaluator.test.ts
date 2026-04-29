@@ -108,6 +108,16 @@ describe("evaluateExpression", () => {
   test("handles whitespace in expressions", () => {
     expect(evaluateExpression("  {{research.score}}  ==  85  ", stepOutputs, config)).toBe(true);
   });
+
+  // Strict equality — no type coercion
+  test("strict equality prevents type coercion", () => {
+    // 0 !== false with strict equality
+    expect(evaluateExpression("{{empty.count}} == false", stepOutputs, config)).toBe(false);
+    // null !== undefined with strict equality
+    expect(evaluateExpression("{{empty.value}} == undefined", stepOutputs, config)).toBe(true); // both resolve to null
+    // 0 !== "" with strict equality
+    expect(evaluateExpression('{{empty.count}} == ""', stepOutputs, config)).toBe(false);
+  });
 });
 
 describe("resolveExpressionValue", () => {
