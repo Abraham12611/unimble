@@ -41,6 +41,12 @@ function isReservedEventType(eventType: string): boolean {
 /**
  * Finds active workflows matching an event type in a workspace
  * and creates execution records for each match.
+ *
+ * Note: Limited to 1000 active workflows per workspace. This is
+ * sufficient for all practical use cases (typical: 10-50 workflows).
+ * If a workspace exceeds this limit, a warning is logged and
+ * workflows beyond the cap are not checked. A dedicated index on
+ * event trigger type would be needed to remove this limit.
  */
 async function triggerMatchingWorkflows(
   ctx: MutationCtx,
@@ -50,6 +56,7 @@ async function triggerMatchingWorkflows(
   eventId: Id<"events">
 ): Promise<number> {
   const now = Date.now();
+  const WORKFLOW_CAP = 1000;
 
   const workflows = await ctx.db
     .query("workflows")
@@ -57,7 +64,15 @@ async function triggerMatchingWorkflows(
       q.eq("workspaceId", workspaceId).eq("status", "active")
     )
     .order("desc")
-    .take(1000);
+    .take(WORKFLOW_CAP);
+
+  if (workflows.length === WORKFLOW_CAP) {
+    console.warn(
+      `[eventBus] Workspace ${workspaceId} has ${WORKFLOW_CAP}+ active workflows. ` +
+        `Event triggers beyond this limit are not checked. ` +
+        `Consider adding a dedicated event-trigger index.`
+    );
+  }
 
   let triggered = 0;
 
