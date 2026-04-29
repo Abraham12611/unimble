@@ -206,71 +206,68 @@ export const triggerScheduledWorkflow = internalMutation({
     const now = Date.now();
     let triggered = 0;
 
-    // Process all active workflows in batches to avoid the
-    // single-query document limit. Uses cursor-based pagination
-    // so workflows beyond the first page are not silently skipped.
+    // Process a single batch of active workflows per cron tick.
+    //
+    // Why no pagination loop: each triggered workflow gets its
+    // nextRunAt patched to a future time, removing it from the
+    // "due" set. On the next cron tick (1 min later), the query
+    // returns a fresh batch that excludes already-processed ones.
+    // Over successive ticks, all due workflows get processed.
+    //
+    // Safety cap: 100 triggers per tick to stay within Convex
+    // mutation time limits.
     const BATCH_SIZE = 500;
-    let hasMore = true;
+    const MAX_TRIGGERS_PER_TICK = 100;
 
-    while (hasMore) {
-      const query = ctx.db
-        .query("workflows")
-        .withIndex("by_status", (q) => q.eq("status", "active"))
-        .order("desc");
+    const workflows = await ctx.db
+      .query("workflows")
+      .withIndex("by_status", (q) => q.eq("status", "active"))
+      .order("desc")
+      .take(BATCH_SIZE);
 
-      const batch = await query.take(BATCH_SIZE);
+    for (const wf of workflows) {
+      if (triggered >= MAX_TRIGGERS_PER_TICK) break;
 
-      // If we got fewer than BATCH_SIZE, this is the last page
-      hasMore = batch.length === BATCH_SIZE;
-
-      for (const wf of batch) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const trigger = wf.trigger as any;
-        if (
-          trigger?.type !== "schedule" ||
-          trigger?.enabled !== true ||
-          !trigger?.nextRunAt ||
-          trigger.nextRunAt > now
-        ) {
-          continue;
-        }
-
-        // Create execution
-        await ctx.db.insert("executions", {
-          workspaceId: wf.workspaceId,
-          workflowId: wf._id,
-          operatorId: wf.operatorId,
-          status: "queued",
-          input: { triggeredBy: "schedule", cron: trigger.cron },
-          output: undefined,
-          error: undefined,
-          startedAt: now,
-          completedAt: undefined,
-          duration: undefined,
-          cost: undefined,
-          createdAt: now,
-          updatedAt: now,
-        });
-
-        // Calculate next run time
-        const nextRun = getNextRunTime(trigger.cron, new Date(now), trigger.timezone);
-
-        await ctx.db.patch(wf._id, {
-          trigger: {
-            ...trigger,
-            nextRunAt: nextRun?.getTime() ?? now + 86400000,
-          },
-          updatedAt: now,
-        });
-
-        triggered++;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const trigger = wf.trigger as any;
+      if (
+        trigger?.type !== "schedule" ||
+        trigger?.enabled !== true ||
+        !trigger?.nextRunAt ||
+        trigger.nextRunAt > now
+      ) {
+        continue;
       }
 
-      // Note: Convex mutations have a time limit. For very large
-      // deployments (>5000 active workflows), this should be split
-      // into multiple scheduled mutation calls. Current approach
-      // handles up to ~2000 workflows per cron tick safely.
-      if (triggered > 100) break; // Safety cap per cron tick
+      await ctx.db.insert("executions", {
+        workspaceId: wf.workspaceId,
+        workflowId: wf._id,
+        operatorId: wf.operatorId,
+        status: "queued",
+        input: { triggeredBy: "schedule", cron: trigger.cron },
+        output: undefined,
+        error: undefined,
+        startedAt: now,
+        completedAt: undefined,
+        duration: undefined,
+        cost: undefined,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      // Advance nextRunAt so this workflow drops out of the
+      // "due" set and won't be re-triggered next tick
+      const nextRun = getNextRunTime(trigger.cron, new Date(now), trigger.timezone);
+
+      await ctx.db.patch(wf._id, {
+        trigger: {
+          ...trigger,
+          nextRunAt: nextRun?.getTime() ?? now + 86400000,
+        },
+        updatedAt: now,
+      });
+
+      triggered++;
     }
 
     return { triggered };
