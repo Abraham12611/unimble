@@ -284,16 +284,74 @@ Aggregated at the execution level and rolled up to the operator.
 ```
 convex/
 ├── engine/
-│   ├── types.ts          — Workflow/step/trigger type definitions
-│   ├── schema.ts         — Zod validators for workflow definitions
-│   ├── stateMachine.ts   — State transition logic
-│   ├── executor.ts       — Main execution loop
-│   ├── stepRunner.ts     — Step type handlers
-│   ├── inputResolver.ts  — Template variable resolution
-│   ├── retryPolicy.ts    — Retry/backoff logic
-│   ├── errorClassifier.ts — Error categorization
-│   ├── scheduler.ts      — Cron-based schedule management
-│   └── eventBus.ts       — Internal event routing
-├── crons.ts              — Convex cron job definitions
+│   ├── types.ts                — Workflow/step/trigger type definitions
+│   ├── schema.ts               — Zod validators for workflow definitions
+│   ├── stateMachine.ts         — State transition + retry logic
+│   ├── scheduler.ts            — Cron-based schedule management
+│   ├── webhookTrigger.ts       — Webhook trigger with HMAC verification
+│   ├── eventBus.ts             — Internal event routing
+│   ├── manualTrigger.ts        — Manual trigger API
+│   ├── stepRunner.ts           — Execution orchestrator + input resolution
+│   ├── stepHandlers.ts         — Step type handlers (agent, tool, etc.)
+│   ├── expressionEvaluator.ts  — Conditional expression evaluation
+│   ├── stepRunner.test.ts      — Step runner unit tests
+│   └── expressionEvaluator.test.ts — Expression evaluator tests
+├── executions.ts               — Execution CRUD mutations/queries
 └── ...existing files
+```
+
+---
+
+## 11. Step Execution Architecture (Phase 6.3)
+
+### Execution Orchestration
+
+The step runner uses a scheduler-based approach:
+
+1. `startExecution` — Transitions execution to "running", creates step
+   records, schedules ready steps (no dependencies)
+2. `advanceExecution` — Picks up a queued step, checks dependencies,
+   marks as running, schedules the step handler action
+3. `executeStepAction` — Delegates to the "use node" action
+4. `completeStep` / `failStep` — Updates step state, checks execution
+   progress, schedules newly-ready steps
+
+### Input Resolution
+
+The `{{...}}` template system supports:
+
+- `{{stepId.output.key}}` — Reference completed step outputs
+- `{{input.key}}` — Reference execution input data
+- `{{config.key}}` — Reference workflow-level configuration
+- Nested paths: `{{step1.output.nested.deep.value}}`
+- Mixed templates: `"Hello {{step1.output.name}}, score: {{step2.output.score}}"`
+- Native type preservation for single-template strings
+
+### Step Handler Dispatch
+
+The `stepHandlers.ts` action dispatches to type-specific handlers:
+
+| Step Type     | Handler                 | External Calls                    |
+| ------------- | ----------------------- | --------------------------------- |
+| `agent`       | `handleAgentStep`       | OpenRouter LLM API                |
+| `tool`        | `handleToolStep`        | Composio, Firecrawl, Perplexity   |
+| `conditional` | `handleConditionalStep` | None (expression evaluation)      |
+| `loop`        | `handleLoopStep`        | Depends on body steps             |
+| `parallel`    | `handleParallelStep`    | Returns branch config for runner  |
+| `wait`        | `handleWaitStep`        | None (sleep or deferred schedule) |
+| `transform`   | `handleTransformStep`   | None (sandboxed JS evaluation)    |
+| `approval`    | `handleApprovalStep`    | None (creates DB record)          |
+
+### Approval Flow
+
+```
+Step running → handleApprovalStep
+  │
+  ├─ Create approval record (status: "pending")
+  ├─ Transition execution to "waiting_approval"
+  └─ Schedule timeout handler
+      │
+      ├─ User approves → resumeAfterApproval → execution "running"
+      ├─ User rejects → resumeAfterApproval → step "failed"
+      └─ Timeout → handleApprovalTimeout → cancel/skip/auto-approve
 ```
