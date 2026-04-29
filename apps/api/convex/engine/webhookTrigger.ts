@@ -69,28 +69,25 @@ export const handleWebhookTrigger = internalMutation({
   handler: async (ctx, args) => {
     const now = Date.now();
 
-    // Find workflow by webhook path
-    const workflows = await ctx.db
+    // Find workflow by webhook path using dedicated index
+    const workflow = await ctx.db
       .query("workflows")
-      .withIndex("by_status", (q) => q.eq("status", "active"))
-      .order("desc")
-      .take(1000);
-
-    const workflow = workflows.find((wf) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const trigger = wf.trigger as any;
-      return (
-        trigger?.type === "webhook" && trigger?.enabled === true && trigger?.path === args.path
-      );
-    });
+      .withIndex("by_webhook_path", (q) => q.eq("webhookPath", args.path))
+      .filter((q) => q.eq(q.field("status"), "active"))
+      .first();
 
     if (!workflow) {
       return { ok: false, error: "No matching workflow found" };
     }
 
-    // Verify signature — reject if secret is set but signature is missing
+    // Verify the trigger is a webhook and enabled
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const trigger = workflow.trigger as any;
+    if (trigger?.type !== "webhook" || trigger?.enabled !== true) {
+      return { ok: false, error: "No matching workflow found" };
+    }
+
+    // Verify signature — reject if secret is set but signature is missing
     if (trigger.secret) {
       if (!args.signature) {
         return { ok: false, error: "Missing webhook signature" };

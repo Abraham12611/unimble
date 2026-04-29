@@ -259,13 +259,28 @@ export const triggerScheduledWorkflow = internalMutation({
       // "due" set and won't be re-triggered next tick
       const nextRun = getNextRunTime(trigger.cron, new Date(now), trigger.timezone);
 
-      await ctx.db.patch(wf._id, {
-        trigger: {
-          ...trigger,
-          nextRunAt: nextRun?.getTime() ?? now + 86400000,
-        },
-        updatedAt: now,
-      });
+      if (nextRun) {
+        await ctx.db.patch(wf._id, {
+          trigger: {
+            ...trigger,
+            nextRunAt: nextRun.getTime(),
+          },
+          updatedAt: now,
+        });
+      } else {
+        // No next run found within 7 days — disable the schedule
+        // to prevent spurious daily re-triggers. This can happen
+        // with very infrequent crons like "0 0 29 2 *" (Feb 29).
+        await ctx.db.patch(wf._id, {
+          trigger: {
+            ...trigger,
+            enabled: false,
+            nextRunAt: undefined,
+            disabledReason: "No next run found within 7 days",
+          },
+          updatedAt: now,
+        });
+      }
 
       triggered++;
     }
