@@ -63,7 +63,10 @@ export function generateWebhookSecret(): string {
 export const handleWebhookTrigger = internalMutation({
   args: {
     path: v.string(),
-    payload: v.any(),
+    /** Raw request body string — used for HMAC verification */
+    rawBody: v.string(),
+    /** Parsed payload for storage in the execution input */
+    payload: v.optional(v.any()),
     signature: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -87,14 +90,13 @@ export const handleWebhookTrigger = internalMutation({
       return { ok: false, error: "No matching workflow found" };
     }
 
-    // Verify signature — reject if secret is set but signature is missing
+    // Verify signature using the raw body string (not re-serialized)
+    // to ensure byte-exact HMAC match with the sender
     if (trigger.secret) {
       if (!args.signature) {
         return { ok: false, error: "Missing webhook signature" };
       }
-      const payloadStr =
-        typeof args.payload === "string" ? args.payload : JSON.stringify(args.payload);
-      const valid = verifyWebhookSignature(payloadStr, args.signature, trigger.secret);
+      const valid = verifyWebhookSignature(args.rawBody, args.signature, trigger.secret);
       if (!valid) {
         return { ok: false, error: "Invalid webhook signature" };
       }

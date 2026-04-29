@@ -223,6 +223,11 @@ function deepEqual(a: unknown, b: unknown): boolean {
   if (typeof a !== typeof b) return false;
   if (typeof a !== "object") return false;
 
+  // Distinguish arrays from plain objects
+  const aIsArray = Array.isArray(a);
+  const bIsArray = Array.isArray(b);
+  if (aIsArray !== bIsArray) return false;
+
   const aObj = a as Record<string, unknown>;
   const bObj = b as Record<string, unknown>;
   const aKeys = Object.keys(aObj);
