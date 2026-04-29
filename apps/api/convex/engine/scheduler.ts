@@ -15,8 +15,8 @@
  * }
  */
 
-import type { MutationCtx, QueryCtx } from "../_generated/server";
-import { internalMutation, internalQuery } from "../_generated/server";
+import type { MutationCtx } from "../_generated/server";
+import { internalMutation } from "../_generated/server";
 
 // ---------------------------------------------------------------------------
 // Cron expression parsing (simplified)
@@ -126,16 +126,30 @@ function getDateComponents(
 function fieldMatches(expr: string, value: number, min: number, max: number): boolean {
   if (expr === "*") return true;
 
-  // Handle step: */n or range/n
+  // Handle step: */n or range/n or start-end/n
   if (expr.includes("/")) {
     const [rangeExpr, stepStr] = expr.split("/");
     const step = parseInt(stepStr, 10);
     if (isNaN(step) || step <= 0) return false;
 
-    const rangeStart = rangeExpr === "*" ? min : parseInt(rangeExpr, 10);
-    if (isNaN(rangeStart)) return false;
+    let rangeStart = min;
+    let rangeEnd = max;
 
-    return (value - rangeStart) % step === 0 && value >= rangeStart;
+    if (rangeExpr === "*") {
+      rangeStart = min;
+      rangeEnd = max;
+    } else if (rangeExpr.includes("-")) {
+      const [startStr, endStr] = rangeExpr.split("-");
+      rangeStart = parseInt(startStr, 10);
+      rangeEnd = parseInt(endStr, 10);
+      if (isNaN(rangeStart) || isNaN(rangeEnd)) return false;
+    } else {
+      rangeStart = parseInt(rangeExpr, 10);
+      if (isNaN(rangeStart)) return false;
+      rangeEnd = max;
+    }
+
+    return value >= rangeStart && value <= rangeEnd && (value - rangeStart) % step === 0;
   }
 
   // Handle list: 1,3,5
@@ -181,53 +195,6 @@ export function getNextRunTime(cron: string, after: Date, timezone?: string): Da
 // ---------------------------------------------------------------------------
 // Schedule checker (called by Convex cron)
 // ---------------------------------------------------------------------------
-
-/**
- * Internal query: finds all workflows with schedule triggers
- * that are due to run (nextRunAt <= now and enabled).
- */
-export const getDueScheduledWorkflows = internalQuery({
-  args: {},
-  handler: async (ctx: QueryCtx) => {
-    const now = Date.now();
-
-    // Query all active workflows and filter for due schedules.
-    // In production with many workflows, this should use an index
-    // on trigger.nextRunAt. For now, we scan active workflows.
-    const workflows = await ctx.db
-      .query("workflows")
-      .withIndex("by_status", (q) => q.eq("status", "active"))
-      .order("desc")
-      .take(1000);
-
-    const due: Array<{
-      workflowId: string;
-      workspaceId: string;
-      operatorId?: string;
-      cron: string;
-    }> = [];
-
-    for (const wf of workflows) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const trigger = wf.trigger as any;
-      if (
-        trigger?.type === "schedule" &&
-        trigger?.enabled === true &&
-        trigger?.nextRunAt &&
-        trigger.nextRunAt <= now
-      ) {
-        due.push({
-          workflowId: wf._id,
-          workspaceId: wf.workspaceId,
-          operatorId: wf.operatorId ?? undefined,
-          cron: trigger.cron,
-        });
-      }
-    }
-
-    return due;
-  },
-});
 
 /**
  * Internal mutation: creates an execution for a scheduled workflow

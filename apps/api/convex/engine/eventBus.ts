@@ -17,6 +17,23 @@ import { internalMutation, mutation } from "../_generated/server";
 import { requireWorkspaceMember } from "../lib/auth";
 import type { Id } from "../_generated/dataModel";
 
+/**
+ * Reserved event type prefixes that can only be emitted by
+ * internal mutations (emitEvent), not by public callers.
+ */
+const RESERVED_EVENT_PREFIXES = [
+  "operator.",
+  "system.",
+  "workflow.",
+  "execution.",
+  "agent.",
+  "internal.",
+];
+
+function isReservedEventType(eventType: string): boolean {
+  return RESERVED_EVENT_PREFIXES.some((prefix) => eventType.startsWith(prefix));
+}
+
 // ---------------------------------------------------------------------------
 // Shared helper — trigger matching
 // ---------------------------------------------------------------------------
@@ -143,6 +160,14 @@ export const emitWorkspaceEvent = mutation({
     resourceId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    // Guard: reject reserved event type prefixes from public callers
+    if (isReservedEventType(args.eventType)) {
+      throw new Error(
+        `Event type "${args.eventType}" is reserved for internal use. ` +
+          `User events must use a custom prefix (e.g. "user.").`
+      );
+    }
+
     const { user } = await requireWorkspaceMember(ctx, args.workspaceId);
 
     const now = Date.now();
