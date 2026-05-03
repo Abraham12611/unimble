@@ -45,7 +45,7 @@ export const communityOperatorConfigSchema = z
     enabled: z.boolean().default(true),
     approvalRequired: z.boolean().default(false),
   })
-  .default({});
+  .default({} as any);
 
 export type CommunityOperatorConfig = z.infer<typeof communityOperatorConfigSchema>;
 

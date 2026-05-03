@@ -43,7 +43,7 @@ export const contentOperatorConfigSchema = z
     enabled: z.boolean().default(true),
     approvalRequired: z.boolean().default(true),
   })
-  .default({});
+  .default({} as any);
 
 export type ContentOperatorConfig = z.infer<typeof contentOperatorConfigSchema>;
 

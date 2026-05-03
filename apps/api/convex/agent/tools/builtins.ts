@@ -90,7 +90,7 @@ export class PerplexitySearchTool extends Tool {
 
     const data = response as Record<string, unknown>;
     const content =
-      (data?.choices as Record<string, unknown>[])?.[0]?.message?.content ?? "";
+      ((data?.choices as Record<string, unknown>[])?.[0]?.message as Record<string, unknown>)?.content ?? "";
     const citations = (data?.citations as string[]) ?? [];
 
     return {
@@ -167,7 +167,7 @@ export class FirecrawlScrapeTool extends Tool {
         markdown: data?.markdown,
         html: data?.html,
         text: data?.text,
-        title: data?.metadata?.title,
+        title: (data?.metadata as Record<string, unknown>)?.title,
       },
     };
   }
@@ -305,7 +305,7 @@ export class MemoryReadTool extends Tool {
 const memoryWriteSchema = z.object({
   content: z.string().min(1),
   category: z.enum(["workspace", "operator", "preferences", "patterns", "content-history"]),
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 export interface MemoryWriter {
@@ -356,7 +356,7 @@ const publishSchema = z.object({
   title: z.string().min(1),
   content: z.string().min(1),
   platform: z.string(),
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
   scheduledAt: z.number().optional(),
 });
 
@@ -413,7 +413,7 @@ const notificationSchema = z.object({
   message: z.string().min(1),
   recipients: z.array(z.string()).optional(),
   priority: z.enum(["low", "normal", "high", "urgent"]).optional(),
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 export interface NotificationSender {

@@ -218,7 +218,7 @@ export class OpenRouterClient {
           throw new Error(`OpenRouter error ${resp.status}: ${text}`);
         }
 
-        const json = await resp.json();
+        const json = await resp.json() as Record<string, unknown>;
         return this._parseResponse(json, params.model);
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));

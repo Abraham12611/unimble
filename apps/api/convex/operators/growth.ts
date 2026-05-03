@@ -48,7 +48,7 @@ export const growthOperatorConfigSchema = z
     enabled: z.boolean().default(true),
     approvalRequired: z.boolean().default(false),
   })
-  .default({});
+  .default({} as any);
 
 export type GrowthOperatorConfig = z.infer<typeof growthOperatorConfigSchema>;
 

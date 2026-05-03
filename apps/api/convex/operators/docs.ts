@@ -34,7 +34,7 @@ export const docsOperatorConfigSchema = z
     enabled: z.boolean().default(true),
     approvalRequired: z.boolean().default(false),
   })
-  .default({});
+  .default({} as any);
 
 export type DocsOperatorConfig = z.infer<typeof docsOperatorConfigSchema>;
 

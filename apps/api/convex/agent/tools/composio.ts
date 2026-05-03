@@ -83,7 +83,7 @@ export class ComposioTool extends Tool {
         this.action.name,
         params as Record<string, unknown>,
         ctx.workspaceId,
-        credentials
+        credentials as Record<string, string> | undefined
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
