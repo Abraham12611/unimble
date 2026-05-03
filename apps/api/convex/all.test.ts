@@ -10,5 +10,6 @@ import "./lib/retry.test";
 import "./lib/circuitBreaker.test";
 import "./phase6.test";
 import "./phase7.test";
+import "./phase8.test";
 
 export {};
