@@ -269,3 +269,104 @@ export const deleteOperator = mutation({
     return await deleteOperatorImpl(ctx, args);
   },
 });
+
+// ---------------------------------------------------------------------------
+// deployOperator — Phase 8 wizard mutation
+// ---------------------------------------------------------------------------
+//
+// Validates raw config against the operator's Zod schema (via the registry),
+// creates the operator record, instantiates default workflow definitions, and
+// persists workflow records linked to the operator.
+//
+
+import { operatorRegistry } from "./operators/index";
+import type { WorkflowDefinition } from "./operators/types";
+
+export async function deployOperatorImpl(
+  ctx: MutationCtx,
+  args: {
+    workspaceId: Id<"workspaces">;
+    type: string;
+    rawConfig?: unknown;
+  }
+): Promise<{ operatorId: Id<"operators">; workflowIds: Id<"workflows">[] }> {
+  await requireWorkspaceOwner(ctx, args.workspaceId);
+
+  // Validate type is a known operator
+  const validation = operatorRegistry.validateConfig(
+    args.type as Parameters<typeof operatorRegistry.validateConfig>[0],
+    args.rawConfig ?? {}
+  );
+  if (!validation.success) {
+    throw new Error(`Invalid operator config: ${(validation as { success: false; error: string }).error}`);
+  }
+
+  // Instantiate to get display name + default workflows
+  const instance = operatorRegistry.instantiate(
+    args.type as Parameters<typeof operatorRegistry.instantiate>[0],
+    args.rawConfig ?? {}
+  );
+
+  const now = Date.now();
+
+  // Create the operator record
+  const operatorId = await ctx.db.insert("operators", {
+    workspaceId: args.workspaceId,
+    type: args.type,
+    name: (instance.getConfig() as { name?: string }).name ?? instance.displayName,
+    description: instance.description,
+    config: instance.getConfig(),
+    status: "active",
+    memory: { namespace: instance.memoryNamespace },
+    metrics: instance.getMetrics(),
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  // Create workflow records for each default workflow definition
+  const workflowIds: Id<"workflows">[] = [];
+  const defaultWorkflows: WorkflowDefinition[] = instance.defaultWorkflows();
+
+  for (const wfDef of defaultWorkflows) {
+    const workflowId = await ctx.db.insert("workflows", {
+      workspaceId: args.workspaceId,
+      operatorId,
+      name: wfDef.name,
+      description: wfDef.description,
+      trigger: wfDef.trigger,
+      steps: wfDef.steps,
+      status: "active",
+      version: 1,
+      createdAt: now,
+      updatedAt: now,
+    });
+    workflowIds.push(workflowId);
+
+    // Persist version snapshot
+    await ctx.db.insert("workflowVersions", {
+      workflowId,
+      workspaceId: args.workspaceId,
+      operatorId,
+      name: wfDef.name,
+      description: wfDef.description,
+      trigger: wfDef.trigger,
+      steps: wfDef.steps,
+      status: "active",
+      version: 1,
+      createdAt: now,
+    });
+  }
+
+  return { operatorId, workflowIds };
+}
+
+export const deployOperator = mutation({
+  args: {
+    workspaceId: convexValidators.workspaceId,
+    type: convexValidators.stringField,
+    rawConfig: v.optional(v.any()),
+  },
+  handler: async (ctx, args) => {
+    return await deployOperatorImpl(ctx, args);
+  },
+});
