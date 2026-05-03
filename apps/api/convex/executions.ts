@@ -26,7 +26,6 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { internalMutation, mutation, query } from "./_generated/server";
 import { executionValidator } from "./validators/execution";
 import {
-  getCurrentUserOrThrow,
   requireWorkspaceAccess,
   requireWorkspaceMember,
   requireWorkspaceOwnerOrAdmin,
@@ -1163,6 +1162,21 @@ export async function createExecutionApprovalImpl(
     await ctx.db.patch(matchingStep._id, { status: "awaiting-approval", updatedAt: now });
   }
 
+  await _emitLog(ctx, {
+    executionId: args.executionId,
+    workspaceId: exe.workspaceId,
+    stepId,
+    event: "approval.requested",
+    level: "info",
+    message: `Approval gate created (type: ${type})`,
+    metadata: {
+      approvalId,
+      type,
+      timeoutBehavior: args.timeoutBehavior,
+      ...(typeof args.timeoutAt === "number" ? { timeoutAt: args.timeoutAt } : {}),
+    },
+  });
+
   return approvalId;
 }
 
@@ -1237,6 +1251,16 @@ export async function respondExecutionApprovalImpl(
     status as "approved" | "rejected",
     args.feedback
   );
+
+  await _emitLog(ctx, {
+    executionId: approval.executionId,
+    workspaceId: exe.workspaceId,
+    stepId: approval.stepId,
+    event: "approval.responded",
+    level: status === "approved" ? "info" : "warn",
+    message: `Approval gate ${status} by user`,
+    metadata: { approvalId: approval._id, status, respondedBy: user._id },
+  });
 
   return args.id;
 }
