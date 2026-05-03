@@ -75,7 +75,7 @@ export default function LearningPage() {
           <div className="h-1.5 rounded-full bg-[#6366F1] transition-all" style={{ width: `${(completed / MODULES.length) * 100}%` }} />
         </div>
         {completed === 0 && (
-          <div className="mt-2 text-[11px] text-[#555555]">Start with "What is Unimble?" to begin your learning path.</div>
+          <div className="mt-2 text-[11px] text-[#555555]">Start with &quot;What is Unimble?&quot; to begin your learning path.</div>
         )}
       </div>
 

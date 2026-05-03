@@ -61,6 +61,8 @@ function ago(ts: number): string {
   return `${Math.floor(s / 86400)}d ago`;
 }
 
+const _DASHBOARD_NOW = Date.now();
+
 export default function WorkspaceDashboardPage() {
   const { workspace } = useWorkspaceContext();
   const slug = workspace?.slug;
@@ -69,7 +71,7 @@ export default function WorkspaceDashboardPage() {
   const operators = useOperators(wid) as Operator[] | undefined;
   const executions = useExecutions(wid) as Execution[] | undefined;
 
-  const weekAgo = useMemo(() => Date.now() - 7 * 24 * 60 * 60 * 1000, []);
+  const weekAgo = _DASHBOARD_NOW - 7 * 24 * 60 * 60 * 1000;
   const activeOps = useMemo(() => operators?.filter((o) => o.status === "active") ?? [], [operators]);
   const weeklyExecs = useMemo(() => executions?.filter((e) => e.createdAt > weekAgo) ?? [], [executions, weekAgo]);
   const pendingApprovals = useMemo(() => executions?.filter((e) => e.status === "pending_approval") ?? [], [executions]);

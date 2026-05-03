@@ -123,7 +123,7 @@ function NewKeyReveal({ rawKey, onDone }: { rawKey: string; onDone: () => void }
       </div>
       <button type="button" onClick={onDone}
         className="mt-1 rounded-[6px] border border-[#2A2A2A] bg-[#1C1C1C] px-3 py-1 text-[12px] hover:bg-[#222222]">
-        I've saved it
+        I&apos;ve saved it
       </button>
     </div>
   );

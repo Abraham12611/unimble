@@ -78,7 +78,7 @@ function ConnectModal({
           {integration.authType === "oauth" ? (
             <div className="space-y-3">
               <div className="rounded-[10px] border border-[#222222] bg-[#111111] p-3 text-[12px] text-[#888888]">
-                You'll be redirected to {integration.name} to grant permission. Unimble will only request the scopes needed to publish content.
+                You&apos;ll be redirected to {integration.name} to grant permission. Unimble will only request the scopes needed to publish content.
               </div>
               <button type="button"
                 className="flex w-full items-center justify-center gap-2 rounded-[6px] border border-[#2A2A2A] bg-[#1C1C1C] px-4 py-2.5 text-[13px] font-medium hover:bg-[#222222]">
