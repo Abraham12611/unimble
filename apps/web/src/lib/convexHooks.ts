@@ -1,6 +1,10 @@
 import { anyApi } from "convex/server";
 import { useQuery } from "convex/react";
 
+// ---------------------------------------------------------------------------
+// Single-resource hooks
+// ---------------------------------------------------------------------------
+
 export function useCurrentUser() {
   return useQuery(anyApi.users.getCurrentUser, {});
 }
@@ -40,5 +44,38 @@ export function useExecutionApprovals(executionId?: string, status?: string) {
   return useQuery(
     anyApi.executions.listExecutionApprovals,
     executionId ? { executionId, status } : "skip"
+  );
+}
+
+export function useOperator(operatorId?: string) {
+  return useQuery(anyApi.operators.getOperator, operatorId ? { id: operatorId } : "skip");
+}
+
+export function useWorkflow(workflowId?: string) {
+  return useQuery(anyApi.workflows.getWorkflow, workflowId ? { id: workflowId } : "skip");
+}
+
+export function useWorkflowVersions(workflowId?: string) {
+  return useQuery(
+    anyApi.workflows.listWorkflowVersions,
+    workflowId ? { workflowId } : "skip"
+  );
+}
+
+export function useWorkflowsByOperator(workspaceId?: string, operatorId?: string) {
+  return useQuery(
+    anyApi.workflows.listWorkflows,
+    workspaceId ? { workspaceId, operatorId } : "skip"
+  );
+}
+
+export function useExecutionStep(stepId?: string) {
+  return useQuery(anyApi.executions.getExecutionStep, stepId ? { id: stepId } : "skip");
+}
+
+export function useAllPendingApprovals(workspaceId?: string) {
+  return useQuery(
+    anyApi.executions.listExecutionApprovals,
+    workspaceId ? { executionId: "all", status: "pending" } : "skip"
   );
 }
