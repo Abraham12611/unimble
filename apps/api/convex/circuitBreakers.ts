@@ -7,9 +7,14 @@
  *
  * Usage pattern:
  *   Before calling a downstream service:
- *     1. checkCircuitAllowed() — if not allowed, skip the call and return a synthetic error
+ *     1. gateWithCircuitBreaker() — if circuit is open, step is immediately
+ *        skipped (status → "skipped", step.skipped log emitted) and the call
+ *        returns { allowed: false }.  Callers MUST check this before proceeding.
  *   After the call:
- *     2. recordCircuitEvent("success" | "failure") — update state accordingly
+ *     2. recordCircuitEvent("success" | "failure") — update circuit state.
+ *   Convenience:
+ *     3. checkCircuitAllowed() — read-only-ish check (transitions open → half-open)
+ *        without side-effects on the step.
  */
 
 import { v } from "convex/values";
@@ -30,7 +35,7 @@ import {
 import type { CircuitBreakerConfig } from "./lib/circuitBreaker";
 
 // ---------------------------------------------------------------------------
-// Impl helpers
+// Internal helper
 // ---------------------------------------------------------------------------
 
 async function getOrCreateCircuitBreaker(
@@ -65,6 +70,10 @@ async function getOrCreateCircuitBreaker(
 
   return (await ctx.db.get(newId))!;
 }
+
+// ---------------------------------------------------------------------------
+// Impl helpers
+// ---------------------------------------------------------------------------
 
 export async function recordCircuitEventImpl(
   ctx: MutationCtx,
@@ -158,6 +167,108 @@ export async function checkCircuitAllowedImpl(
   return { allowed, state: nextSnapshot?.state ?? cb.state };
 }
 
+/**
+ * Phase 6.5 — Circuit-breaker gate for a specific execution step.
+ *
+ * Checks whether the named integration/tool circuit is open.  If it is:
+ *   • Patches the step to "skipped" with { reason: "circuit-open", key } error.
+ *   • Emits a "step.skipped" warn log so the event is visible in observability.
+ *   • Returns { allowed: false, state: "open" }.
+ *
+ * If the circuit is closed or half-open (possibly transitioning to half-open):
+ *   • Returns { allowed: true, state }.
+ *   • Caller is responsible for recording the outcome via recordCircuitEvent.
+ *
+ * This is the primary integration point for short-circuiting step execution
+ * in runner paths.
+ */
+export async function gateWithCircuitBreakerImpl(
+  ctx: MutationCtx,
+  args: {
+    executionId: Id<"executions">;
+    stepDocId: Id<"executionSteps">;
+    key: string;
+    config?: CircuitBreakerConfig;
+  }
+): Promise<{ allowed: boolean; state: string }> {
+  const exe = await ctx.db.get(args.executionId);
+  if (!exe) throw new Error("Execution not found");
+
+  await requireWorkspaceOwnerOrAdmin(ctx, exe.workspaceId);
+
+  const step = await ctx.db.get(args.stepDocId);
+  if (!step) throw new Error("Execution step not found");
+  if (step.executionId !== args.executionId) {
+    throw new Error("Step does not belong to this execution");
+  }
+
+  const config = args.config ?? DEFAULT_CIRCUIT_CONFIG;
+  const key = String(args.key ?? "").trim();
+  if (!key) throw new Error("key is required");
+
+  const cb = await getOrCreateCircuitBreaker(ctx, exe.workspaceId, key, config);
+  const now = Date.now();
+
+  const { allowed, nextSnapshot } = isCircuitAllowed(
+    {
+      state: cb.state as "closed" | "open" | "half-open",
+      failureCount: cb.failureCount,
+      successCount: cb.successCount,
+      openedAt: cb.openedAt,
+      nextRetryAt: cb.nextRetryAt,
+    },
+    config,
+    now
+  );
+
+  if (nextSnapshot) {
+    await ctx.db.patch(cb._id, {
+      state: nextSnapshot.state,
+      successCount: nextSnapshot.successCount,
+      nextRetryAt: nextSnapshot.nextRetryAt,
+      updatedAt: now,
+    });
+  }
+
+  if (!allowed) {
+    // Short-circuit: mark step as skipped and emit observability event
+    const terminalExeStatuses = new Set(["completed", "failed", "canceled"]);
+    if (!terminalExeStatuses.has(exe.status)) {
+      await ctx.db.patch(args.stepDocId, {
+        status: "skipped",
+        error: {
+          reason: "circuit-open",
+          key,
+          circuitState: cb.state,
+          failureCount: cb.failureCount,
+        },
+        completedAt: now,
+        updatedAt: now,
+      });
+
+      await ctx.db.insert("executionLogs", {
+        executionId: args.executionId,
+        workspaceId: exe.workspaceId,
+        stepId: step.stepId,
+        event: "step.skipped",
+        level: "warn",
+        message: `Step "${step.name}" skipped: circuit breaker open for key="${key}"`,
+        metadata: {
+          key,
+          circuitState: cb.state,
+          failureCount: cb.failureCount,
+          nextRetryAt: cb.nextRetryAt,
+        },
+        timestamp: now,
+      });
+    }
+
+    return { allowed: false, state: cb.state };
+  }
+
+  return { allowed: true, state: nextSnapshot?.state ?? cb.state };
+}
+
 export async function getCircuitBreakerImpl(
   ctx: QueryCtx,
   args: {
@@ -234,6 +345,30 @@ export const checkCircuitAllowed = mutation({
     };
     return await checkCircuitAllowedImpl(ctx, {
       workspaceId: args.workspaceId,
+      key: args.key,
+      config,
+    });
+  },
+});
+
+export const gateWithCircuitBreaker = mutation({
+  args: {
+    executionId: convexValidators.executionId,
+    stepDocId: v.id("executionSteps"),
+    key: v.string(),
+    failureThreshold: v.optional(v.number()),
+    successThreshold: v.optional(v.number()),
+    halfOpenAfterMs: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const config: CircuitBreakerConfig = {
+      failureThreshold: args.failureThreshold ?? DEFAULT_CIRCUIT_CONFIG.failureThreshold,
+      successThreshold: args.successThreshold ?? DEFAULT_CIRCUIT_CONFIG.successThreshold,
+      halfOpenAfterMs: args.halfOpenAfterMs ?? DEFAULT_CIRCUIT_CONFIG.halfOpenAfterMs,
+    };
+    return await gateWithCircuitBreakerImpl(ctx, {
+      executionId: args.executionId,
+      stepDocId: args.stepDocId,
       key: args.key,
       config,
     });

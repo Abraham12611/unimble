@@ -178,6 +178,8 @@ export default defineSchema({
     startedAt: v.optional(v.number()),
     completedAt: v.optional(v.number()),
     retryCount: v.optional(v.number()),
+    // Phase 6.5: unix ms after which the step is eligible for re-execution following a backoff delay
+    retryAfter: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -231,7 +233,9 @@ export default defineSchema({
 
   // Phase 6.6: Structured step/execution lifecycle log events.
   // event: "step.started" | "step.completed" | "step.failed" | "step.retried" |
-  //        "step.skipped" | "execution.started" | "execution.completed" | "execution.failed"
+  //        "step.skipped" | "execution.started" | "execution.completed" |
+  //        "execution.failed" | "approval.requested" | "approval.responded" |
+  //        "approval.timed-out" | "approval.escalated"
   // level: "debug" | "info" | "warn" | "error"
   executionLogs: defineTable({
     executionId: v.id("executions"),
