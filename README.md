@@ -40,9 +40,9 @@ unimble/
 ### Installation
 
 ```bash
-# Clone the repository
-git clone https://github.com/Abraham12611/unimble.git
-cd unimble
+# Clone the fork (DO NOT clone Abraham12611/unimble — that is the upstream source)
+git clone https://github.com/Abraham12611/unimble-branch.git
+cd unimble-branch
 
 # Install dependencies
 pnpm install
