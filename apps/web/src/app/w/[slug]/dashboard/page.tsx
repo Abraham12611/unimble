@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useWorkspaceContext } from "@/lib/workspace-context";
 import { useOperators, useExecutions } from "@/lib/convexHooks";
 import {
@@ -68,11 +68,13 @@ export default function WorkspaceDashboardPage() {
   const operators = useOperators(wid) as Operator[] | undefined;
   const executions = useExecutions(wid) as Execution[] | undefined;
 
+  const [now] = useState(Date.now);
+
   const activeOps = useMemo(() => operators?.filter((o) => o.status === "active") ?? [], [operators]);
   const weeklyExecs = useMemo(() => {
-    const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
     return executions?.filter((e) => e.createdAt > weekAgo) ?? [];
-  }, [executions]);
+  }, [executions, now]);
   const pendingApprovals = useMemo(() => executions?.filter((e) => e.status === "pending_approval") ?? [], [executions]);
   const recent = useMemo(() => [...(executions ?? [])].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 10), [executions]);
 

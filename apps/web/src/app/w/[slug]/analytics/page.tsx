@@ -87,10 +87,11 @@ export default function AnalyticsPage() {
 
   const [tab, setTab] = useState<Tab>("Usage");
 
+  const [now] = useState(Date.now);
+
   // Build last-7-days execution counts by day
   const { dailyCounts, statusCounts, operatorCounts } = useMemo(() => {
     const execs = executions ?? [];
-    const now = Date.now();
     const days = Array.from({ length: 7 }, (_, i) => {
       const d = new Date(now - (6 - i) * 86400000);
       return { label: d.toLocaleDateString("en", { weekday: "short" }), ts: d.getTime(), count: 0 };
@@ -117,7 +118,7 @@ export default function AnalyticsPage() {
       statusCounts: statuses,
       operatorCounts: opCounts,
     };
-  }, [executions]);
+  }, [executions, now]);
 
   const totalExecs = executions?.length ?? 0;
   const successRate = totalExecs === 0 ? "—" : `${Math.round(((statusCounts.completed ?? 0) / totalExecs) * 100)}%`;
