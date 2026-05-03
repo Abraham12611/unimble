@@ -6,7 +6,6 @@ import { useWorkspaceContext } from "@/lib/workspace-context";
 import { useOperators, useExecutions } from "@/lib/convexHooks";
 import {
   Robot,
-  Play,
   CheckSquare,
   ArrowRight,
   Circle,
@@ -61,8 +60,6 @@ function ago(ts: number): string {
   return `${Math.floor(s / 86400)}d ago`;
 }
 
-const _DASHBOARD_NOW = Date.now();
-
 export default function WorkspaceDashboardPage() {
   const { workspace } = useWorkspaceContext();
   const slug = workspace?.slug;
@@ -71,9 +68,11 @@ export default function WorkspaceDashboardPage() {
   const operators = useOperators(wid) as Operator[] | undefined;
   const executions = useExecutions(wid) as Execution[] | undefined;
 
-  const weekAgo = _DASHBOARD_NOW - 7 * 24 * 60 * 60 * 1000;
   const activeOps = useMemo(() => operators?.filter((o) => o.status === "active") ?? [], [operators]);
-  const weeklyExecs = useMemo(() => executions?.filter((e) => e.createdAt > weekAgo) ?? [], [executions, weekAgo]);
+  const weeklyExecs = useMemo(() => {
+    const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    return executions?.filter((e) => e.createdAt > weekAgo) ?? [];
+  }, [executions]);
   const pendingApprovals = useMemo(() => executions?.filter((e) => e.status === "pending_approval") ?? [], [executions]);
   const recent = useMemo(() => [...(executions ?? [])].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 10), [executions]);
 

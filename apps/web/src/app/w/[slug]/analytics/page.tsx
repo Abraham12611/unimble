@@ -78,8 +78,6 @@ function StatCard({ label, value, sub, sparkValues, trend }: {
 const TABS = ["Usage", "Performance", "Operators", "Content"] as const;
 type Tab = (typeof TABS)[number];
 
-const _ANALYTICS_NOW = Date.now();
-
 export default function AnalyticsPage() {
   const { workspace } = useWorkspaceContext();
   const wid = workspace?._id;
@@ -92,7 +90,7 @@ export default function AnalyticsPage() {
   // Build last-7-days execution counts by day
   const { dailyCounts, statusCounts, operatorCounts } = useMemo(() => {
     const execs = executions ?? [];
-    const now = _ANALYTICS_NOW;
+    const now = Date.now();
     const days = Array.from({ length: 7 }, (_, i) => {
       const d = new Date(now - (6 - i) * 86400000);
       return { label: d.toLocaleDateString("en", { weekday: "short" }), ts: d.getTime(), count: 0 };

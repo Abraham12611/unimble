@@ -73,9 +73,3 @@ export function useExecutionStep(stepId?: string) {
   return useQuery(anyApi.executions.getExecutionStep, stepId ? { id: stepId } : "skip");
 }
 
-export function useAllPendingApprovals(workspaceId?: string) {
-  return useQuery(
-    anyApi.executions.listExecutionApprovals,
-    workspaceId ? { executionId: "all", status: "pending" } : "skip"
-  );
-}
