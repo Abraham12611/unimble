@@ -229,7 +229,10 @@ export default defineSchema({
     .index("by_status", ["status"])
     .index("by_requested_at", ["requestedAt"])
     .index("by_execution_and_status", ["executionId", "status"])
-    .index("by_timeout_at", ["timeoutAt"]),
+    .index("by_timeout_at", ["timeoutAt"])
+    // Compound index used by the batch timeout processor to efficiently
+    // retrieve only pending approvals whose timeoutAt has elapsed.
+    .index("by_status_and_timeout", ["status", "timeoutAt"]),
 
   // Phase 6.6: Structured step/execution lifecycle log events.
   // event: "step.started" | "step.completed" | "step.failed" | "step.retried" |

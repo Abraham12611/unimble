@@ -3,18 +3,18 @@
  *
  * Phase 6.4 — Human-in-the-Loop:
  *   createExecutionApproval, respondExecutionApproval, timeoutExecutionApproval,
- *   processTimedOutApprovals (batch timeout processor for scheduler integration)
+ *   processTimedOutApprovals (batch timeout processor — scheduler-safe, no user
+ *   identity required; expose as internalMutation for production cron use)
  *
  * Phase 6.5 — Retry & Error Handling:
  *   requeueStepWithRetry — wires RetryConfig backoff to step re-enqueue or DLQ write
  *
  * Phase 6.6 — Observability:
- *   updateExecutionStepStatus emits a structured executionLogs event on every
- *   meaningful status transition (step.started, step.completed, step.failed,
- *   step.skipped).  When the step completes or fails with cost data, it also
- *   rolls up the cost to the parent execution atomically.
- *   updateExecutionStatus emits execution.completed / execution.failed for terminal
- *   transitions.
+ *   updateExecutionStepStatus emits a structured executionLogs event (with
+ *   inputHash, outputHash, and error metadata) on every meaningful status
+ *   transition and rolls up cost to the parent execution atomically.
+ *   updateExecutionStatus emits execution.completed / execution.failed for
+ *   terminal transitions.
  */
 
 import { v } from "convex/values";
@@ -34,6 +34,31 @@ import { calculateBackoffMs, shouldRetry } from "./lib/retry";
 import type { RetryConfig } from "./lib/retry";
 
 // ---------------------------------------------------------------------------
+// Pure helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * FNV-1a 32-bit hash of any JSON-serialisable value.
+ * Used to populate inputHash / outputHash in executionLogs for content
+ * fingerprinting without storing raw payloads.
+ */
+function _simpleHash(value: unknown): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  try {
+    const str = JSON.stringify(value);
+    if (!str) return undefined;
+    let h = 0x811c9dc5;
+    for (let i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 0x01000193) >>> 0;
+    }
+    return h.toString(16).padStart(8, "0");
+  } catch {
+    return undefined;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
 
@@ -48,6 +73,8 @@ async function _emitLog(
     level: string;
     message: string;
     durationMs?: number;
+    inputHash?: string;
+    outputHash?: string;
     tokensUsed?: number;
     estimatedCostUsd?: number;
     metadata?: unknown;
@@ -61,11 +88,126 @@ async function _emitLog(
     level: args.level,
     message: args.message,
     durationMs: args.durationMs,
+    inputHash: args.inputHash,
+    outputHash: args.outputHash,
     tokensUsed: args.tokensUsed,
     estimatedCostUsd: args.estimatedCostUsd,
     metadata: args.metadata ?? undefined,
     timestamp: Date.now(),
   });
+}
+
+/**
+ * Apply timeout behavior to a single approval document.
+ * No auth check — called from the batch processor (scheduler path) and also
+ * from the public API (after auth is verified by the caller).
+ *
+ * Idempotent: non-pending approvals and approvals whose timeoutAt has not yet
+ * elapsed are silently skipped.
+ */
+async function _applyTimeoutToApprovalNoAuth(
+  ctx: MutationCtx,
+  approvalId: Id<"approvals">
+): Promise<Id<"approvals">> {
+  const approval = await ctx.db.get(approvalId);
+  if (!approval) throw new Error("Approval not found");
+
+  const exe = await ctx.db.get(approval.executionId);
+  if (!exe) throw new Error("Execution not found");
+
+  if (approval.status !== "pending") return approvalId;
+  if (typeof approval.timeoutAt !== "number" || Date.now() < approval.timeoutAt) {
+    return approvalId;
+  }
+
+  const behavior = approval.timeoutBehavior ?? "auto-reject";
+  const now = Date.now();
+
+  if (behavior === "auto-approve") {
+    await ctx.db.patch(approvalId, {
+      status: "approved",
+      feedback: { timedOut: true, autoApproved: true, timedOutAt: now },
+      respondedAt: now,
+      updatedAt: now,
+    });
+    await _emitLog(ctx, {
+      executionId: approval.executionId,
+      workspaceId: exe.workspaceId,
+      stepId: approval.stepId,
+      event: "approval.timed-out",
+      level: "warn",
+      message: `Approval gate auto-approved after timeout`,
+      metadata: { behavior, approvalId: approval._id },
+    });
+    return approvalId;
+  }
+
+  if (behavior === "auto-reject") {
+    await ctx.db.patch(approvalId, {
+      status: "rejected",
+      feedback: { timedOut: true, autoRejected: true, timedOutAt: now },
+      respondedAt: now,
+      updatedAt: now,
+    });
+    await _emitLog(ctx, {
+      executionId: approval.executionId,
+      workspaceId: exe.workspaceId,
+      stepId: approval.stepId,
+      event: "approval.timed-out",
+      level: "warn",
+      message: `Approval gate auto-rejected after timeout`,
+      metadata: { behavior, approvalId: approval._id },
+    });
+    return approvalId;
+  }
+
+  // behavior === "escalate"
+  await ctx.db.patch(approvalId, {
+    status: "escalated",
+    feedback: { timedOut: true, escalated: true, timedOutAt: now },
+    respondedAt: now,
+    updatedAt: now,
+  });
+
+  const escalationId = await ctx.db.insert("approvals", {
+    executionId: approval.executionId,
+    stepId: approval.stepId,
+    type: "escalation",
+    content: {
+      originalApprovalId: approval._id,
+      originalContent: approval.content,
+      escalatedAt: now,
+      channel: approval.escalationChannel ?? "default",
+    },
+    status: "pending",
+    requestedAt: now,
+    respondedAt: undefined,
+    respondedBy: undefined,
+    feedback: undefined,
+    timeoutAt: undefined,
+    timeoutBehavior: undefined,
+    escalationChannel: approval.escalationChannel,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  // Phase 6.6 — escalation log event (production would also dispatch a
+  // notification to escalationChannel here, e.g. Slack/PagerDuty webhook)
+  await _emitLog(ctx, {
+    executionId: approval.executionId,
+    workspaceId: exe.workspaceId,
+    stepId: approval.stepId,
+    event: "approval.escalated",
+    level: "warn",
+    message: `Approval gate timed out and escalated (channel: ${approval.escalationChannel ?? "default"})`,
+    metadata: {
+      originalApprovalId: approval._id,
+      escalationId,
+      channel: approval.escalationChannel ?? "default",
+    },
+  });
+
+  return escalationId;
 }
 
 // ---------------------------------------------------------------------------
@@ -561,16 +703,16 @@ export const listExecutionSteps = query({
 });
 
 /**
- * Phase 6.6 — Update step status and emit structured lifecycle log.
+ * Phase 6.6 — Update step status and emit a structured lifecycle log.
  *
  * Meaningful transitions emit:
- *   running  → step.started (info)
- *   completed → step.completed (info)  — also rolls up cost to execution
- *   failed   → step.failed (error)    — also rolls up cost to execution
- *   skipped  → step.skipped (warn)
+ *   running   → step.started  (info)  — includes inputHash
+ *   completed → step.completed (info) — includes inputHash, outputHash, cost fields
+ *   failed    → step.failed   (error) — includes inputHash, error details in metadata
+ *   skipped   → step.skipped  (warn)
  *
- * Optional cost parameters (tokensUsed, estimatedCostUsd, toolCallCount) are
- * included in the log and rolled up atomically on completion/failure.
+ * On completed/failed transitions with estimatedCostUsd > 0, the cost is rolled
+ * up to execution.cost atomically within the same mutation.
  */
 export async function updateExecutionStepStatusImpl(
   ctx: MutationCtx,
@@ -627,15 +769,15 @@ export async function updateExecutionStepStatusImpl(
   if (args.error !== undefined) patch.error = args.error;
   if (args.retryCount !== undefined) patch.retryCount = args.retryCount;
 
-  const startedAt = args.startedAt ?? (status === "running" ? now : step.startedAt);
-  if (startedAt !== undefined) patch.startedAt = startedAt;
+  const effectiveStartedAt =
+    args.startedAt ?? (status === "running" ? now : step.startedAt);
+  if (effectiveStartedAt !== undefined) patch.startedAt = effectiveStartedAt;
 
   const terminalStepStatuses = new Set(["completed", "failed", "canceled", "skipped"]);
   const isTerminalStep = terminalStepStatuses.has(status);
 
   if (isTerminalStep) {
-    const completedAt = args.completedAt ?? now;
-    patch.completedAt = completedAt;
+    patch.completedAt = args.completedAt ?? now;
   } else {
     if (step.completedAt !== undefined) {
       patch.completedAt = undefined;
@@ -655,9 +797,27 @@ export async function updateExecutionStepStatusImpl(
   const logInfo = logEventMap[status];
   if (logInfo) {
     const durationMs =
-      isTerminalStep && startedAt !== undefined
-        ? Math.max(0, now - (startedAt as number))
+      isTerminalStep && effectiveStartedAt !== undefined
+        ? Math.max(0, now - (effectiveStartedAt as number))
         : undefined;
+
+    // Content fingerprints (non-sensitive; stored for diff / audit purposes)
+    const inputHash = _simpleHash(step.input);
+    const outputHash =
+      status === "completed"
+        ? _simpleHash(args.output ?? step.output)
+        : undefined;
+
+    // Structured metadata — include error details on failure
+    let logMetadata: unknown;
+    if (status === "failed") {
+      logMetadata = {
+        error: args.error,
+        ...(args.toolCallCount !== undefined ? { toolCallCount: args.toolCallCount } : {}),
+      };
+    } else if (args.toolCallCount !== undefined) {
+      logMetadata = { toolCallCount: args.toolCallCount };
+    }
 
     await _emitLog(ctx, {
       executionId: step.executionId,
@@ -667,12 +827,11 @@ export async function updateExecutionStepStatusImpl(
       level: logInfo.level,
       message: `Step "${step.name}": ${status}`,
       durationMs,
+      inputHash,
+      outputHash,
       tokensUsed: args.tokensUsed,
       estimatedCostUsd: args.estimatedCostUsd,
-      metadata:
-        args.toolCallCount !== undefined
-          ? { toolCallCount: args.toolCallCount }
-          : undefined,
+      metadata: logMetadata,
     });
 
     // Roll up cost to parent execution atomically on completion/failure
@@ -718,22 +877,14 @@ export const updateExecutionStepStatus = mutation({
  * Re-enqueue a failed step with backoff, or move it to the dead-letter queue
  * when retry attempts are exhausted.
  *
- * Backoff calculation uses the pure `calculateBackoffMs` utility; strategy
- * options are: "none" | "fixed" | "exponential" | "linear" (with optional jitter).
- *
  * Flow:
- *   1. Verify step is in "failed" state (only failed steps can be retried here).
- *   2. Compute nextAttemptNumber = (step.retryCount ?? 0) + 1.
+ *   1. Verify step is in "failed" state.
+ *   2. nextAttemptNumber = (step.retryCount ?? 0) + 1.
  *   3. shouldRetry → false:
- *        Write dead-letter entry; step stays "failed"; emit step.failed log with
- *        metadata { dlq: true, retryCount }.
+ *        Write DLQ entry; step stays "failed"; emit step.failed log with DLQ metadata.
  *   4. shouldRetry → true:
- *        Calculate backoff delay; update step to "queued" with retryCount and
- *        retryAfter; emit step.retried log.
- *
- * Returns:
- *   { enqueued: true,  retryAttempt, delayMs, retryAfter }  — requeued
- *   { enqueued: false, retryAttempt, dlqEntryId }           — exhausted → DLQ
+ *        Calculate backoff; update step to "queued" with retryCount/retryAfter;
+ *        emit step.retried log.
  */
 export async function requeueStepWithRetryImpl(
   ctx: MutationCtx,
@@ -799,6 +950,7 @@ export async function requeueStepWithRetryImpl(
       event: "step.failed",
       level: "error",
       message: `Step "${step.name}" sent to dead-letter queue after ${retryAttempt} attempt(s)`,
+      inputHash: _simpleHash(step.input),
       metadata: { dlq: true, retryAttempt, maxAttempts, strategy, dlqEntryId },
     });
 
@@ -826,6 +978,7 @@ export async function requeueStepWithRetryImpl(
     level: "info",
     message: `Step "${step.name}" re-queued (attempt ${retryAttempt}/${maxAttempts}, delay ${delayMs}ms)`,
     durationMs: delayMs,
+    inputHash: _simpleHash(step.input),
     metadata: { retryAttempt, maxAttempts, strategy, delayMs, retryAfter },
   });
 
@@ -1032,17 +1185,9 @@ export const respondExecutionApproval = mutation({
 });
 
 /**
- * Phase 6.4 — Apply timeout behavior to a pending approval whose timeoutAt has elapsed.
+ * Phase 6.4 — Apply timeout behavior to a single pending approval (public API).
  *
- * Behaviors:
- *   auto-approve → status "approved",  { timedOut: true } feedback
- *   auto-reject  → status "rejected",  { timedOut: true } feedback
- *   escalate     → status "escalated"; creates a new "escalation" approval; emits
- *                  approval.escalated log (notification stub — production would also
- *                  dispatch to the escalationChannel here)
- *
- * If the approval is not yet timed out, or is already in a non-pending state,
- * returns the same approvalId unchanged.
+ * Verifies workspace ownership, then delegates to `_applyTimeoutToApprovalNoAuth`.
  */
 export async function timeoutExecutionApprovalImpl(
   ctx: MutationCtx,
@@ -1056,101 +1201,7 @@ export async function timeoutExecutionApprovalImpl(
 
   await requireWorkspaceOwnerOrAdmin(ctx, exe.workspaceId);
 
-  if (approval.status !== "pending") return args.id;
-  if (approval.timeoutAt === undefined || Date.now() < approval.timeoutAt) return args.id;
-
-  const behavior = approval.timeoutBehavior ?? "auto-reject";
-  const now = Date.now();
-
-  if (behavior === "auto-approve") {
-    await ctx.db.patch(args.id, {
-      status: "approved",
-      feedback: { timedOut: true, autoApproved: true, timedOutAt: now },
-      respondedAt: now,
-      updatedAt: now,
-    });
-
-    await _emitLog(ctx, {
-      executionId: approval.executionId,
-      workspaceId: exe.workspaceId,
-      stepId: approval.stepId,
-      event: "approval.timed-out",
-      level: "warn",
-      message: `Approval gate auto-approved after timeout`,
-      metadata: { behavior, approvalId: approval._id },
-    });
-
-    return args.id;
-  }
-
-  if (behavior === "auto-reject") {
-    await ctx.db.patch(args.id, {
-      status: "rejected",
-      feedback: { timedOut: true, autoRejected: true, timedOutAt: now },
-      respondedAt: now,
-      updatedAt: now,
-    });
-
-    await _emitLog(ctx, {
-      executionId: approval.executionId,
-      workspaceId: exe.workspaceId,
-      stepId: approval.stepId,
-      event: "approval.timed-out",
-      level: "warn",
-      message: `Approval gate auto-rejected after timeout`,
-      metadata: { behavior, approvalId: approval._id },
-    });
-
-    return args.id;
-  }
-
-  // behavior === "escalate"
-  await ctx.db.patch(args.id, {
-    status: "escalated",
-    feedback: { timedOut: true, escalated: true, timedOutAt: now },
-    respondedAt: now,
-    updatedAt: now,
-  });
-
-  const escalationId = await ctx.db.insert("approvals", {
-    executionId: approval.executionId,
-    stepId: approval.stepId,
-    type: "escalation",
-    content: {
-      originalApprovalId: approval._id,
-      originalContent: approval.content,
-      escalatedAt: now,
-      channel: approval.escalationChannel ?? "default",
-    },
-    status: "pending",
-    requestedAt: now,
-    respondedAt: undefined,
-    respondedBy: undefined,
-    feedback: undefined,
-    timeoutAt: undefined,
-    timeoutBehavior: undefined,
-    escalationChannel: approval.escalationChannel,
-    createdAt: now,
-    updatedAt: now,
-  });
-
-  // Phase 6.6 — emit escalation log event (notification dispatch would happen here
-  // in production, e.g., POST to Slack/PagerDuty via escalationChannel)
-  await _emitLog(ctx, {
-    executionId: approval.executionId,
-    workspaceId: exe.workspaceId,
-    stepId: approval.stepId,
-    event: "approval.escalated",
-    level: "warn",
-    message: `Approval gate timed out and escalated (channel: ${approval.escalationChannel ?? "default"})`,
-    metadata: {
-      originalApprovalId: approval._id,
-      escalationId,
-      channel: approval.escalationChannel ?? "default",
-    },
-  });
-
-  return escalationId;
+  return _applyTimeoutToApprovalNoAuth(ctx, args.id);
 }
 
 export const timeoutExecutionApproval = mutation({
@@ -1163,48 +1214,60 @@ export const timeoutExecutionApproval = mutation({
 });
 
 /**
- * Phase 6.4 — Batch timeout processor for scheduler integration.
+ * Phase 6.4 — Scheduler-safe batch timeout processor.
  *
- * Scans all pending approvals whose timeoutAt ≤ now and applies the configured
- * timeout behavior.  Designed to be called from a Convex cron or an external
- * job scheduler every 1–5 minutes.
+ * Designed to be invoked from a Convex cron or external job scheduler with
+ * NO end-user identity in context.  In production this should be exported as
+ * an `internalMutation` so it is not callable from external clients.
  *
- * Returns the count of approvals processed in this invocation.
- * Safe to call repeatedly; already-processed approvals are skipped (idempotent).
+ * Design decisions:
+ *   • No `getCurrentUserOrThrow` — system operation, no identity required.
+ *   • Uses the compound `by_status_and_timeout` index (status="pending" AND
+ *     timeoutAt ≤ now) for an O(log n + k) scan instead of a full table scan.
+ *   • Per-approval try-catch: a failure in one workspace cannot block approvals
+ *     in other workspaces (cross-tenant isolation).
+ *   • Returns processedCount + optional failedIds for observability.
  */
 export async function processTimedOutApprovalsImpl(
   ctx: MutationCtx,
   args: { batchSize?: number }
 ) {
-  await getCurrentUserOrThrow(ctx);
-
   const batchSize = args.batchSize && args.batchSize > 0 ? args.batchSize : 100;
   const now = Date.now();
 
-  // Scan up to batchSize * 2 candidates via the timeout index (undefined values
-  // sort to the lower bound in Convex, so they appear first; filter them out).
+  // Efficiently query only pending approvals via the compound index.
+  // The range `.lte("timeoutAt", now)` includes rows where timeoutAt is
+  // undefined (they sort to the lower bound); we filter those in JS.
   const candidates = await ctx.db
     .query("approvals")
-    .withIndex("by_timeout_at")
+    .withIndex("by_status_and_timeout", (q) =>
+      q.eq("status", "pending").lte("timeoutAt", now)
+    )
     .order("asc")
-    .take(batchSize * 2);
+    .take(batchSize + 10); // small buffer for any undefined-timeoutAt rows
 
-  const toProcess = candidates.filter(
-    (a) =>
-      a.status === "pending" &&
-      typeof a.timeoutAt === "number" &&
-      a.timeoutAt <= now
-  );
+  const toProcess = candidates
+    .filter((a) => typeof a.timeoutAt === "number" && a.timeoutAt <= now)
+    .slice(0, batchSize);
 
-  const batch = toProcess.slice(0, batchSize);
   let processedCount = 0;
+  const failedIds: string[] = [];
 
-  for (const approval of batch) {
-    await timeoutExecutionApprovalImpl(ctx, { id: approval._id });
-    processedCount++;
+  for (const approval of toProcess) {
+    try {
+      await _applyTimeoutToApprovalNoAuth(ctx, approval._id);
+      processedCount++;
+    } catch {
+      // Record failures but continue processing remaining approvals
+      // so one bad workspace cannot block another (cross-tenant isolation).
+      failedIds.push(String(approval._id));
+    }
   }
 
-  return { processedCount };
+  return {
+    processedCount,
+    ...(failedIds.length > 0 ? { failedIds } : {}),
+  };
 }
 
 export const processTimedOutApprovals = mutation({

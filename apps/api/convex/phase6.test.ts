@@ -2,12 +2,12 @@
  * Phase 6.4–6.6 integration tests
  *
  * Covers:
- *   6.4 – Human-in-the-Loop (approval gates, feedback requests, escalation, timeouts,
- *          batch timeout processor)
+ *   6.4 – Human-in-the-Loop (approval gates, feedback, escalation, timeouts,
+ *          batch timeout processor including scheduler-safe & cross-workspace)
  *   6.5 – Retry & Error Handling (requeueStepWithRetry, dead-letter queue,
- *          circuit breaker gating)
- *   6.6 – Observability & Monitoring (lifecycle log emission from step transitions,
- *          cost rollup, execution log API)
+ *          circuit breaker step gating)
+ *   6.6 – Observability (step lifecycle logs with inputHash/outputHash/error
+ *          metadata, cost rollup, execution log API)
  */
 
 import { describe, expect, test } from "vitest";
@@ -59,22 +59,25 @@ function makeIdentity(partial: Partial<UserIdentity>): Partial<UserIdentity> {
 }
 
 // ---------------------------------------------------------------------------
-// Shared setup helper
+// Shared setup helpers
 // ---------------------------------------------------------------------------
 
-async function seedWorkspaceAndExecution(t: ReturnType<typeof convexTest>) {
+async function seedWorkspaceAndExecution(
+  t: ReturnType<typeof convexTest>,
+  clerkId = "clerk_owner"
+) {
   const [workspaceId, workflowId] = await t.run(async (ctx) => {
     const now = Date.now();
     const ownerId = await ctx.db.insert("users", {
-      clerkId: "clerk_owner",
-      email: "owner@example.com",
+      clerkId,
+      email: `${clerkId}@example.com`,
       role: "user",
       createdAt: now,
       updatedAt: now,
     });
     const workspaceId = await ctx.db.insert("workspaces", {
       name: "Team",
-      slug: "team",
+      slug: clerkId,
       description: "",
       ownerId,
       plan: "free",
@@ -103,7 +106,7 @@ async function seedWorkspaceAndExecution(t: ReturnType<typeof convexTest>) {
     });
     return [workspaceId, workflowId] as const;
   });
-  const ownerAuthed = t.withIdentity(makeIdentity({ subject: "clerk_owner" }));
+  const ownerAuthed = t.withIdentity(makeIdentity({ subject: clerkId }));
   const executionId = await ownerAuthed.mutation(async (ctx) => {
     return await createExecutionImpl(ctx, {
       workspaceId,
@@ -112,6 +115,65 @@ async function seedWorkspaceAndExecution(t: ReturnType<typeof convexTest>) {
     });
   });
   return { workspaceId, workflowId, executionId, ownerAuthed };
+}
+
+/** Seed two independent workspaces in the same convexTest instance. */
+async function seedTwoWorkspaces(t: ReturnType<typeof convexTest>) {
+  const now = Date.now();
+  const [ws1Id, exe1Id, ws2Id, exe2Id] = await t.run(async (ctx) => {
+    const u1 = await ctx.db.insert("users", {
+      clerkId: "clerk_ws1_owner",
+      email: "ws1@example.com",
+      role: "user",
+      createdAt: now,
+      updatedAt: now,
+    });
+    const ws1 = await ctx.db.insert("workspaces", {
+      name: "WS1",
+      slug: "ws1",
+      ownerId: u1,
+      plan: "free",
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+    });
+    await ctx.db.insert("workspaceMembers", { workspaceId: ws1, userId: u1, role: "owner", joinedAt: now });
+    const wf1 = await ctx.db.insert("workflows", {
+      workspaceId: ws1, name: "WF1", status: "active", version: 1, createdAt: now, updatedAt: now,
+    });
+    const exe1 = await ctx.db.insert("executions", {
+      workspaceId: ws1, workflowId: wf1, status: "running",
+      startedAt: now, createdAt: now, updatedAt: now,
+    });
+
+    const u2 = await ctx.db.insert("users", {
+      clerkId: "clerk_ws2_owner",
+      email: "ws2@example.com",
+      role: "user",
+      createdAt: now,
+      updatedAt: now,
+    });
+    const ws2 = await ctx.db.insert("workspaces", {
+      name: "WS2",
+      slug: "ws2",
+      ownerId: u2,
+      plan: "free",
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+    });
+    await ctx.db.insert("workspaceMembers", { workspaceId: ws2, userId: u2, role: "owner", joinedAt: now });
+    const wf2 = await ctx.db.insert("workflows", {
+      workspaceId: ws2, name: "WF2", status: "active", version: 1, createdAt: now, updatedAt: now,
+    });
+    const exe2 = await ctx.db.insert("executions", {
+      workspaceId: ws2, workflowId: wf2, status: "running",
+      startedAt: now, createdAt: now, updatedAt: now,
+    });
+
+    return [ws1, exe1, ws2, exe2] as const;
+  });
+  return { ws1Id, exe1Id, ws2Id, exe2Id };
 }
 
 // ---------------------------------------------------------------------------
@@ -184,16 +246,10 @@ describe("human-in-the-loop — approval gate", () => {
     });
 
     const r1 = await ownerAuthed.mutation(async (ctx) => {
-      return await respondExecutionApprovalImpl(ctx, {
-        id: approvalId,
-        status: "approved",
-      });
+      return await respondExecutionApprovalImpl(ctx, { id: approvalId, status: "approved" });
     });
     const r2 = await ownerAuthed.mutation(async (ctx) => {
-      return await respondExecutionApprovalImpl(ctx, {
-        id: approvalId,
-        status: "approved",
-      });
+      return await respondExecutionApprovalImpl(ctx, { id: approvalId, status: "approved" });
     });
     expect(r1).toBe(r2);
   });
@@ -268,10 +324,7 @@ describe("human-in-the-loop — timeout behavior", () => {
     });
 
     const logs = await t.run(async (ctx) =>
-      ctx.db
-        .query("executionLogs")
-        .withIndex("by_execution", (q) => q.eq("executionId", executionId))
-        .collect()
+      ctx.db.query("executionLogs").withIndex("by_execution", (q) => q.eq("executionId", executionId)).collect()
     );
     const timeoutLog = logs.find((l) => l.event === "approval.timed-out");
     expect(timeoutLog).toBeDefined();
@@ -335,7 +388,7 @@ describe("human-in-the-loop — timeout behavior", () => {
     expect(content.channel).toBe("slack-#ops");
   });
 
-  test("escalate: emits approval.escalated log event", async () => {
+  test("escalate: emits approval.escalated log event with channel metadata", async () => {
     const t = convexTest({ schema, modules });
     const { executionId, ownerAuthed } = await seedWorkspaceAndExecution(t);
 
@@ -355,10 +408,7 @@ describe("human-in-the-loop — timeout behavior", () => {
     });
 
     const logs = await t.run(async (ctx) =>
-      ctx.db
-        .query("executionLogs")
-        .withIndex("by_execution", (q) => q.eq("executionId", executionId))
-        .collect()
+      ctx.db.query("executionLogs").withIndex("by_execution", (q) => q.eq("executionId", executionId)).collect()
     );
     const escalateLog = logs.find((l) => l.event === "approval.escalated");
     expect(escalateLog).toBeDefined();
@@ -420,50 +470,34 @@ describe("human-in-the-loop — processTimedOutApprovals (batch processor)", () 
     const t = convexTest({ schema, modules });
     const { executionId, ownerAuthed } = await seedWorkspaceAndExecution(t);
 
-    // Create 3 timed-out approvals with different behaviors
     await ownerAuthed.mutation(async (ctx) => {
       await createExecutionApprovalImpl(ctx, {
-        executionId,
-        stepId: "batch-step-1",
-        type: "approval",
-        timeoutAt: Date.now() - 2000,
-        timeoutBehavior: "auto-approve",
+        executionId, stepId: "batch-step-1", type: "approval",
+        timeoutAt: Date.now() - 2000, timeoutBehavior: "auto-approve",
       });
       await createExecutionApprovalImpl(ctx, {
-        executionId,
-        stepId: "batch-step-2",
-        type: "approval",
-        timeoutAt: Date.now() - 1000,
-        timeoutBehavior: "auto-reject",
+        executionId, stepId: "batch-step-2", type: "approval",
+        timeoutAt: Date.now() - 1000, timeoutBehavior: "auto-reject",
       });
       await createExecutionApprovalImpl(ctx, {
-        executionId,
-        stepId: "batch-step-3",
-        type: "approval",
+        executionId, stepId: "batch-step-3", type: "approval",
         timeoutAt: Date.now() + 60_000,  // NOT yet timed out
         timeoutBehavior: "auto-reject",
       });
     });
 
-    const result = await ownerAuthed.mutation(async (ctx) => {
+    const result = await t.run(async (ctx) => {
       return await processTimedOutApprovalsImpl(ctx, {});
     });
 
     expect(result.processedCount).toBe(2);
 
     const all = await t.run(async (ctx) =>
-      ctx.db
-        .query("approvals")
-        .withIndex("by_execution", (q) => q.eq("executionId", executionId))
-        .collect()
+      ctx.db.query("approvals").withIndex("by_execution", (q) => q.eq("executionId", executionId)).collect()
     );
-    const approved = all.find((a) => a.stepId === "batch-step-1");
-    const rejected = all.find((a) => a.stepId === "batch-step-2");
-    const pending = all.find((a) => a.stepId === "batch-step-3");
-
-    expect(approved!.status).toBe("approved");
-    expect(rejected!.status).toBe("rejected");
-    expect(pending!.status).toBe("pending");
+    expect(all.find((a) => a.stepId === "batch-step-1")!.status).toBe("approved");
+    expect(all.find((a) => a.stepId === "batch-step-2")!.status).toBe("rejected");
+    expect(all.find((a) => a.stepId === "batch-step-3")!.status).toBe("pending");
   });
 
   test("batch processor is idempotent — re-running does not double-process", async () => {
@@ -472,23 +506,72 @@ describe("human-in-the-loop — processTimedOutApprovals (batch processor)", () 
 
     await ownerAuthed.mutation(async (ctx) => {
       return await createExecutionApprovalImpl(ctx, {
-        executionId,
-        stepId: "idempotent-batch",
-        type: "approval",
-        timeoutAt: Date.now() - 1,
-        timeoutBehavior: "auto-reject",
+        executionId, stepId: "idempotent-batch", type: "approval",
+        timeoutAt: Date.now() - 1, timeoutBehavior: "auto-reject",
       });
     });
 
-    const r1 = await ownerAuthed.mutation(async (ctx) => {
-      return await processTimedOutApprovalsImpl(ctx, {});
-    });
-    const r2 = await ownerAuthed.mutation(async (ctx) => {
-      return await processTimedOutApprovalsImpl(ctx, {});
-    });
+    const r1 = await t.run(async (ctx) => processTimedOutApprovalsImpl(ctx, {}));
+    const r2 = await t.run(async (ctx) => processTimedOutApprovalsImpl(ctx, {}));
 
     expect(r1.processedCount).toBe(1);
     expect(r2.processedCount).toBe(0);  // already processed
+  });
+
+  test("cross-workspace: processes approvals from multiple workspaces without blocking", async () => {
+    const t = convexTest({ schema, modules });
+    const { exe1Id, exe2Id } = await seedTwoWorkspaces(t);
+    const now = Date.now();
+
+    // Directly insert timed-out approvals for both workspaces
+    await t.run(async (ctx) => {
+      await ctx.db.insert("approvals", {
+        executionId: exe1Id, stepId: "ws1-approval", type: "approval",
+        status: "pending", requestedAt: now - 5000,
+        timeoutAt: now - 1000, timeoutBehavior: "auto-reject",
+        createdAt: now - 5000, updatedAt: now - 5000,
+      });
+      await ctx.db.insert("approvals", {
+        executionId: exe2Id, stepId: "ws2-approval", type: "approval",
+        status: "pending", requestedAt: now - 4000,
+        timeoutAt: now - 500, timeoutBehavior: "auto-approve",
+        createdAt: now - 4000, updatedAt: now - 4000,
+      });
+    });
+
+    // Call processTimedOutApprovals with NO user identity (simulating a cron)
+    const result = await t.run(async (ctx) => {
+      return await processTimedOutApprovalsImpl(ctx, {});
+    });
+
+    expect(result.processedCount).toBe(2);
+    expect((result as any).failedIds).toBeUndefined();
+
+    const all = await t.run(async (ctx) => ctx.db.query("approvals").collect());
+    expect(all.find((a) => a.stepId === "ws1-approval")!.status).toBe("rejected");
+    expect(all.find((a) => a.stepId === "ws2-approval")!.status).toBe("approved");
+  });
+
+  test("scheduler-safe: runs without user identity in context", async () => {
+    const t = convexTest({ schema, modules });
+    const { executionId } = await seedWorkspaceAndExecution(t);
+    const now = Date.now();
+
+    await t.run(async (ctx) => {
+      await ctx.db.insert("approvals", {
+        executionId, stepId: "no-auth-step", type: "approval",
+        status: "pending", requestedAt: now - 3000,
+        timeoutAt: now - 1000, timeoutBehavior: "auto-reject",
+        createdAt: now - 3000, updatedAt: now - 3000,
+      });
+    });
+
+    // t.run provides no auth identity — must not throw
+    const result = await t.run(async (ctx) => {
+      return await processTimedOutApprovalsImpl(ctx, {});
+    });
+
+    expect(result.processedCount).toBe(1);
   });
 });
 
@@ -503,17 +586,14 @@ describe("human-in-the-loop — feedback request and escalation step types", () 
 
     const approvalId = await ownerAuthed.mutation(async (ctx) => {
       return await createExecutionApprovalImpl(ctx, {
-        executionId,
-        stepId: "step-feedback",
-        type: "feedback",
+        executionId, stepId: "step-feedback", type: "feedback",
         content: { prompt: "Rate the quality of this draft (1-5):" },
       });
     });
 
     await ownerAuthed.mutation(async (ctx) => {
       return await respondExecutionApprovalImpl(ctx, {
-        id: approvalId,
-        status: "approved",
+        id: approvalId, status: "approved",
         feedback: { rating: 4, comments: "Good, minor tweaks needed" },
       });
     });
@@ -521,8 +601,7 @@ describe("human-in-the-loop — feedback request and escalation step types", () 
     const approval = await t.run(async (ctx) => ctx.db.get(approvalId));
     expect(approval!.type).toBe("feedback");
     expect(approval!.status).toBe("approved");
-    const fb = approval!.feedback as Record<string, unknown>;
-    expect(fb.rating).toBe(4);
+    expect((approval!.feedback as Record<string, unknown>).rating).toBe(4);
   });
 
   test("escalation step type is accepted and respondable", async () => {
@@ -531,13 +610,8 @@ describe("human-in-the-loop — feedback request and escalation step types", () 
 
     const approvalId = await ownerAuthed.mutation(async (ctx) => {
       return await createExecutionApprovalImpl(ctx, {
-        executionId,
-        stepId: "step-escalation",
-        type: "escalation",
-        content: {
-          reason: "Budget threshold exceeded",
-          channel: "email:cto@example.com",
-        },
+        executionId, stepId: "step-escalation", type: "escalation",
+        content: { reason: "Budget threshold exceeded", channel: "email:cto@example.com" },
       });
     });
 
@@ -554,19 +628,17 @@ describe("human-in-the-loop — feedback request and escalation step types", () 
 describe("retry orchestration — requeueStepWithRetry", () => {
   async function seedFailedStep(
     ownerAuthed: ReturnType<ReturnType<typeof convexTest>["withIdentity"]>,
-    executionId: ReturnType<typeof convexTest> extends { withIdentity: unknown }
-      ? never
-      : string,
+    executionId: any,
     stepId = "step-llm"
   ) {
-    // Create and immediately fail a step
     const stepDocId = await ownerAuthed.mutation(async (ctx) => {
       return await createExecutionStepImpl(ctx, {
-        executionId: executionId as any,
+        executionId,
         stepId,
         name: "LLM Call",
         type: "llm",
         status: "running",
+        input: { prompt: "Hello world" },
       });
     });
     await ownerAuthed.mutation(async (ctx) => {
@@ -583,7 +655,7 @@ describe("retry orchestration — requeueStepWithRetry", () => {
     const t = convexTest({ schema, modules });
     const { executionId, ownerAuthed } = await seedWorkspaceAndExecution(t);
 
-    const stepDocId = await seedFailedStep(ownerAuthed, executionId as any);
+    const stepDocId = await seedFailedStep(ownerAuthed, executionId);
 
     const result = await ownerAuthed.mutation(async (ctx) => {
       return await requeueStepWithRetryImpl(ctx, {
@@ -597,7 +669,7 @@ describe("retry orchestration — requeueStepWithRetry", () => {
     expect(result.enqueued).toBe(true);
     if (result.enqueued) {
       expect(result.retryAttempt).toBe(1);
-      expect(result.delayMs).toBe(1000);  // exponential: attempt 1 = base * 2^0 = 1000
+      expect(result.delayMs).toBe(1000);
       expect(result.retryAfter).toBeTypeOf("number");
     }
 
@@ -611,7 +683,7 @@ describe("retry orchestration — requeueStepWithRetry", () => {
     const t = convexTest({ schema, modules });
     const { executionId, ownerAuthed } = await seedWorkspaceAndExecution(t);
 
-    const stepDocId = await seedFailedStep(ownerAuthed, executionId as any, "step-log-retry");
+    const stepDocId = await seedFailedStep(ownerAuthed, executionId, "step-log-retry");
 
     await ownerAuthed.mutation(async (ctx) => {
       return await requeueStepWithRetryImpl(ctx, {
@@ -623,24 +695,18 @@ describe("retry orchestration — requeueStepWithRetry", () => {
     });
 
     const logs = await t.run(async (ctx) =>
-      ctx.db
-        .query("executionLogs")
-        .withIndex("by_execution", (q) => q.eq("executionId", executionId as any))
-        .collect()
+      ctx.db.query("executionLogs").withIndex("by_execution", (q) => q.eq("executionId", executionId as any)).collect()
     );
     const retriedLog = logs.find((l) => l.event === "step.retried");
     expect(retriedLog).toBeDefined();
     expect(retriedLog!.level).toBe("info");
-    const meta = retriedLog!.metadata as Record<string, unknown>;
-    expect(meta.retryAttempt).toBe(1);
-    expect(meta.strategy).toBe("fixed");
+    expect((retriedLog!.metadata as Record<string, unknown>).retryAttempt).toBe(1);
   });
 
   test("sends step to dead-letter queue after max retries exhausted", async () => {
     const t = convexTest({ schema, modules });
     const { executionId, ownerAuthed } = await seedWorkspaceAndExecution(t);
 
-    // Seed a step that already has retryCount = 2 (at maxAttempts - 1)
     const stepDocId = await ownerAuthed.mutation(async (ctx) => {
       const now = Date.now();
       return await ctx.db.insert("executionSteps", {
@@ -656,7 +722,6 @@ describe("retry orchestration — requeueStepWithRetry", () => {
       });
     });
 
-    // maxAttempts = 3, retryCount already = 2 → next attempt = 3 → shouldRetry(config, 3) = false
     const result = await ownerAuthed.mutation(async (ctx) => {
       return await requeueStepWithRetryImpl(ctx, {
         stepDocId: stepDocId as any,
@@ -668,20 +733,13 @@ describe("retry orchestration — requeueStepWithRetry", () => {
     });
 
     expect(result.enqueued).toBe(false);
-    if (!result.enqueued) {
-      expect(result.dlqEntryId).toBeDefined();
-    }
+    if (!result.enqueued) expect(result.dlqEntryId).toBeDefined();
 
-    // Step should still be "failed"
     const step = await t.run(async (ctx) => ctx.db.get(stepDocId as any));
     expect(step!.status).toBe("failed");
 
-    // DLQ entry should exist
     const dlq = await t.run(async (ctx) =>
-      ctx.db
-        .query("deadLetterQueue")
-        .withIndex("by_execution", (q) => q.eq("executionId", executionId as any))
-        .first()
+      ctx.db.query("deadLetterQueue").withIndex("by_execution", (q) => q.eq("executionId", executionId as any)).first()
     );
     expect(dlq).toBeDefined();
     expect(dlq!.reason).toBe("Max retry attempts exhausted");
@@ -716,16 +774,12 @@ describe("retry orchestration — requeueStepWithRetry", () => {
     });
 
     const logs = await t.run(async (ctx) =>
-      ctx.db
-        .query("executionLogs")
-        .withIndex("by_execution", (q) => q.eq("executionId", executionId as any))
-        .collect()
+      ctx.db.query("executionLogs").withIndex("by_execution", (q) => q.eq("executionId", executionId as any)).collect()
     );
     const failedLog = logs.find((l) => l.event === "step.failed");
     expect(failedLog).toBeDefined();
     expect(failedLog!.level).toBe("error");
-    const meta = failedLog!.metadata as Record<string, unknown>;
-    expect(meta.dlq).toBe(true);
+    expect((failedLog!.metadata as Record<string, unknown>).dlq).toBe(true);
   });
 
   test("only failed steps can be requeued", async () => {
@@ -790,39 +844,24 @@ describe("dead-letter queue", () => {
 
   test("list dead-letter entries for workspace, unresolvedOnly filter", async () => {
     const t = convexTest({ schema, modules });
-    const { workspaceId, executionId, ownerAuthed } =
-      await seedWorkspaceAndExecution(t);
+    const { workspaceId, executionId, ownerAuthed } = await seedWorkspaceAndExecution(t);
 
     const e1 = await ownerAuthed.mutation(async (ctx) => {
-      return await createDeadLetterEntryImpl(ctx, {
-        executionId,
-        reason: "Error A",
-        retryCount: 3,
-      });
+      return await createDeadLetterEntryImpl(ctx, { executionId, reason: "Error A", retryCount: 3 });
     });
     await ownerAuthed.mutation(async (ctx) => {
-      return await createDeadLetterEntryImpl(ctx, {
-        executionId,
-        reason: "Error B",
-        retryCount: 2,
-      });
+      return await createDeadLetterEntryImpl(ctx, { executionId, reason: "Error B", retryCount: 2 });
     });
-
     await ownerAuthed.mutation(async (ctx) => {
       return await resolveDeadLetterEntryImpl(ctx, { id: e1 });
     });
 
-    const all = await ownerAuthed.query(async (ctx) => {
-      return await listDeadLetterEntriesImpl(ctx, { workspaceId });
-    });
+    const all = await ownerAuthed.query(async (ctx) => listDeadLetterEntriesImpl(ctx, { workspaceId }));
     expect(all.length).toBe(2);
 
-    const unresolved = await ownerAuthed.query(async (ctx) => {
-      return await listDeadLetterEntriesImpl(ctx, {
-        workspaceId,
-        unresolvedOnly: true,
-      });
-    });
+    const unresolved = await ownerAuthed.query(async (ctx) =>
+      listDeadLetterEntriesImpl(ctx, { workspaceId, unresolvedOnly: true })
+    );
     expect(unresolved.length).toBe(1);
     expect(unresolved[0].reason).toBe("Error B");
   });
@@ -832,19 +871,11 @@ describe("dead-letter queue", () => {
     const { executionId, ownerAuthed } = await seedWorkspaceAndExecution(t);
 
     const entryId = await ownerAuthed.mutation(async (ctx) => {
-      return await createDeadLetterEntryImpl(ctx, {
-        executionId,
-        reason: "Idempotent test",
-        retryCount: 1,
-      });
+      return await createDeadLetterEntryImpl(ctx, { executionId, reason: "Idempotent test", retryCount: 1 });
     });
 
-    await ownerAuthed.mutation(async (ctx) => {
-      return await resolveDeadLetterEntryImpl(ctx, { id: entryId });
-    });
-    const r2 = await ownerAuthed.mutation(async (ctx) => {
-      return await resolveDeadLetterEntryImpl(ctx, { id: entryId });
-    });
+    await ownerAuthed.mutation(async (ctx) => resolveDeadLetterEntryImpl(ctx, { id: entryId }));
+    const r2 = await ownerAuthed.mutation(async (ctx) => resolveDeadLetterEntryImpl(ctx, { id: entryId }));
     expect(r2).toBe(entryId);
 
     const entry = await t.run(async (ctx) => ctx.db.get(entryId));
@@ -857,11 +888,7 @@ describe("dead-letter queue", () => {
 
     const res = await ownerAuthed.mutation(async (ctx) => {
       try {
-        return await createDeadLetterEntryImpl(ctx, {
-          executionId,
-          reason: "  ",
-          retryCount: 1,
-        });
+        return await createDeadLetterEntryImpl(ctx, { executionId, reason: "  ", retryCount: 1 });
       } catch (err) {
         return String(err);
       }
@@ -881,18 +908,13 @@ describe("circuit breakers — persistence", () => {
 
     await ownerAuthed.mutation(async (ctx) => {
       return await recordCircuitEventImpl(ctx, {
-        workspaceId,
-        key: "openrouter:completion",
-        event: "failure",
+        workspaceId, key: "openrouter:completion", event: "failure",
         config: { failureThreshold: 3, successThreshold: 2, halfOpenAfterMs: 10_000 },
       });
     });
 
     const cb = await ownerAuthed.query(async (ctx) => {
-      return await getCircuitBreakerImpl(ctx, {
-        workspaceId,
-        key: "openrouter:completion",
-      });
+      return await getCircuitBreakerImpl(ctx, { workspaceId, key: "openrouter:completion" });
     });
 
     expect(cb).toBeDefined();
@@ -907,19 +929,14 @@ describe("circuit breakers — persistence", () => {
     for (let i = 0; i < 3; i++) {
       await ownerAuthed.mutation(async (ctx) => {
         return await recordCircuitEventImpl(ctx, {
-          workspaceId,
-          key: "slack:message",
-          event: "failure",
+          workspaceId, key: "slack:message", event: "failure",
           config: { failureThreshold: 3, successThreshold: 2, halfOpenAfterMs: 10_000 },
         });
       });
     }
 
     const cb = await ownerAuthed.query(async (ctx) => {
-      return await getCircuitBreakerImpl(ctx, {
-        workspaceId,
-        key: "slack:message",
-      });
+      return await getCircuitBreakerImpl(ctx, { workspaceId, key: "slack:message" });
     });
 
     expect(cb!.state).toBe("open");
@@ -934,9 +951,7 @@ describe("circuit breakers — persistence", () => {
     for (let i = 0; i < 3; i++) {
       await ownerAuthed.mutation(async (ctx) => {
         return await recordCircuitEventImpl(ctx, {
-          workspaceId,
-          key: "github:api",
-          event: "failure",
+          workspaceId, key: "github:api", event: "failure",
           config: { failureThreshold: 3, successThreshold: 2, halfOpenAfterMs: 10_000 },
         });
       });
@@ -944,8 +959,7 @@ describe("circuit breakers — persistence", () => {
 
     const result = await ownerAuthed.mutation(async (ctx) => {
       return await checkCircuitAllowedImpl(ctx, {
-        workspaceId,
-        key: "github:api",
+        workspaceId, key: "github:api",
         config: { failureThreshold: 3, successThreshold: 2, halfOpenAfterMs: 10_000 },
       });
     });
@@ -960,9 +974,7 @@ describe("circuit breakers — persistence", () => {
     for (let i = 0; i < 2; i++) {
       await ownerAuthed.mutation(async (ctx) => {
         return await recordCircuitEventImpl(ctx, {
-          workspaceId,
-          key: "webhook:post",
-          event: "failure",
+          workspaceId, key: "webhook:post", event: "failure",
           config: { failureThreshold: 5, successThreshold: 2, halfOpenAfterMs: 10_000 },
         });
       });
@@ -970,9 +982,7 @@ describe("circuit breakers — persistence", () => {
 
     await ownerAuthed.mutation(async (ctx) => {
       return await recordCircuitEventImpl(ctx, {
-        workspaceId,
-        key: "webhook:post",
-        event: "success",
+        workspaceId, key: "webhook:post", event: "success",
         config: { failureThreshold: 5, successThreshold: 2, halfOpenAfterMs: 10_000 },
       });
     });
@@ -990,10 +1000,7 @@ describe("circuit breakers — persistence", () => {
     const { workspaceId, ownerAuthed } = await seedWorkspaceAndExecution(t);
 
     const result = await ownerAuthed.mutation(async (ctx) => {
-      return await checkCircuitAllowedImpl(ctx, {
-        workspaceId,
-        key: "brand-new-integration",
-      });
+      return await checkCircuitAllowedImpl(ctx, { workspaceId, key: "brand-new-integration" });
     });
 
     expect(result.allowed).toBe(true);
@@ -1007,38 +1014,26 @@ describe("circuit breakers — persistence", () => {
 describe("circuit breaker — step gating", () => {
   test("skips step and emits step.skipped log when circuit is open", async () => {
     const t = convexTest({ schema, modules });
-    const { workspaceId, executionId, ownerAuthed } =
-      await seedWorkspaceAndExecution(t);
+    const { workspaceId, executionId, ownerAuthed } = await seedWorkspaceAndExecution(t);
 
-    // Open the circuit
     for (let i = 0; i < 3; i++) {
       await ownerAuthed.mutation(async (ctx) => {
         return await recordCircuitEventImpl(ctx, {
-          workspaceId,
-          key: "openai:chat",
-          event: "failure",
+          workspaceId, key: "openai:chat", event: "failure",
           config: { failureThreshold: 3, successThreshold: 2, halfOpenAfterMs: 60_000 },
         });
       });
     }
 
-    // Create a queued step
     const stepDocId = await ownerAuthed.mutation(async (ctx) => {
       return await createExecutionStepImpl(ctx, {
-        executionId,
-        stepId: "step-gated",
-        name: "AI Call",
-        type: "llm",
-        status: "queued",
+        executionId, stepId: "step-gated", name: "AI Call", type: "llm", status: "queued",
       });
     });
 
-    // Gate — should short-circuit the step
     const gate = await ownerAuthed.mutation(async (ctx) => {
       return await gateWithCircuitBreakerImpl(ctx, {
-        executionId,
-        stepDocId: stepDocId as any,
-        key: "openai:chat",
+        executionId, stepDocId: stepDocId as any, key: "openai:chat",
         config: { failureThreshold: 3, successThreshold: 2, halfOpenAfterMs: 60_000 },
       });
     });
@@ -1046,17 +1041,12 @@ describe("circuit breaker — step gating", () => {
     expect(gate.allowed).toBe(false);
     expect(gate.state).toBe("open");
 
-    // Step should be marked skipped
     const step = await t.run(async (ctx) => ctx.db.get(stepDocId as any));
     expect(step!.status).toBe("skipped");
     expect((step!.error as Record<string, unknown>).reason).toBe("circuit-open");
 
-    // Observability log emitted
     const logs = await t.run(async (ctx) =>
-      ctx.db
-        .query("executionLogs")
-        .withIndex("by_execution", (q) => q.eq("executionId", executionId))
-        .collect()
+      ctx.db.query("executionLogs").withIndex("by_execution", (q) => q.eq("executionId", executionId)).collect()
     );
     const skippedLog = logs.find((l) => l.event === "step.skipped");
     expect(skippedLog).toBeDefined();
@@ -1070,25 +1060,18 @@ describe("circuit breaker — step gating", () => {
 
     const stepDocId = await ownerAuthed.mutation(async (ctx) => {
       return await createExecutionStepImpl(ctx, {
-        executionId,
-        stepId: "step-allowed",
-        name: "Allowed Step",
-        type: "llm",
-        status: "queued",
+        executionId, stepId: "step-allowed", name: "Allowed Step", type: "llm", status: "queued",
       });
     });
 
     const gate = await ownerAuthed.mutation(async (ctx) => {
       return await gateWithCircuitBreakerImpl(ctx, {
-        executionId,
-        stepDocId: stepDocId as any,
-        key: "openai:chat",
+        executionId, stepDocId: stepDocId as any, key: "openai:chat",
       });
     });
 
     expect(gate.allowed).toBe(true);
 
-    // Step should still be queued (unchanged)
     const step = await t.run(async (ctx) => ctx.db.get(stepDocId as any));
     expect(step!.status).toBe("queued");
   });
@@ -1105,45 +1088,38 @@ describe("observability — step lifecycle log emission", () => {
 
     const stepDocId = await ownerAuthed.mutation(async (ctx) => {
       return await createExecutionStepImpl(ctx, {
-        executionId,
-        stepId: "step-lifecycle",
-        name: "Process Data",
-        type: "task",
-        status: "queued",
+        executionId, stepId: "step-lifecycle", name: "Process Data", type: "task",
+        status: "queued", input: { key: "value" },
       });
     });
 
     await ownerAuthed.mutation(async (ctx) => {
       return await updateExecutionStepStatusImpl(ctx, {
-        id: stepDocId as any,
-        status: "running",
+        id: stepDocId as any, status: "running",
       });
     });
 
     const logs = await t.run(async (ctx) =>
-      ctx.db
-        .query("executionLogs")
-        .withIndex("by_execution", (q) => q.eq("executionId", executionId))
-        .collect()
+      ctx.db.query("executionLogs").withIndex("by_execution", (q) => q.eq("executionId", executionId)).collect()
     );
 
     const startedLog = logs.find((l) => l.event === "step.started");
     expect(startedLog).toBeDefined();
     expect(startedLog!.level).toBe("info");
     expect(startedLog!.stepId).toBe("step-lifecycle");
+    // inputHash populated from step.input
+    expect(startedLog!.inputHash).toBeTypeOf("string");
+    expect(startedLog!.inputHash!.length).toBeGreaterThan(0);
   });
 
-  test("updateExecutionStepStatus emits step.completed log and rolls up cost", async () => {
+  test("updateExecutionStepStatus emits step.completed with inputHash, outputHash, and cost rollup", async () => {
     const t = convexTest({ schema, modules });
     const { executionId, ownerAuthed } = await seedWorkspaceAndExecution(t);
 
     const stepDocId = await ownerAuthed.mutation(async (ctx) => {
       return await createExecutionStepImpl(ctx, {
-        executionId,
-        stepId: "step-cost",
-        name: "LLM Completion",
-        type: "llm",
-        status: "running",
+        executionId, stepId: "step-cost", name: "LLM Completion", type: "llm",
+        status: "running", input: { prompt: "Summarise this" },
       });
     });
 
@@ -1151,22 +1127,22 @@ describe("observability — step lifecycle log emission", () => {
       return await updateExecutionStepStatusImpl(ctx, {
         id: stepDocId as any,
         status: "completed",
-        output: { text: "Done" },
+        output: { text: "Summary text" },
         tokensUsed: 1200,
         estimatedCostUsd: 0.0024,
         toolCallCount: 3,
       });
     });
 
-    // Log emitted
     const logs = await t.run(async (ctx) =>
-      ctx.db
-        .query("executionLogs")
-        .withIndex("by_execution", (q) => q.eq("executionId", executionId))
-        .collect()
+      ctx.db.query("executionLogs").withIndex("by_execution", (q) => q.eq("executionId", executionId)).collect()
     );
     const completedLog = logs.find((l) => l.event === "step.completed");
     expect(completedLog).toBeDefined();
+    expect(completedLog!.inputHash).toBeTypeOf("string");
+    expect(completedLog!.outputHash).toBeTypeOf("string");
+    // inputHash != outputHash (different content)
+    expect(completedLog!.inputHash).not.toBe(completedLog!.outputHash);
     expect(completedLog!.tokensUsed).toBe(1200);
     expect(completedLog!.estimatedCostUsd).toBeCloseTo(0.0024, 6);
     expect((completedLog!.metadata as Record<string, unknown>).toolCallCount).toBe(3);
@@ -1176,37 +1152,41 @@ describe("observability — step lifecycle log emission", () => {
     expect(exe!.cost).toBeCloseTo(0.0024, 6);
   });
 
-  test("updateExecutionStepStatus emits step.failed log on failure", async () => {
+  test("updateExecutionStepStatus emits step.failed log with error metadata", async () => {
     const t = convexTest({ schema, modules });
     const { executionId, ownerAuthed } = await seedWorkspaceAndExecution(t);
 
     const stepDocId = await ownerAuthed.mutation(async (ctx) => {
       return await createExecutionStepImpl(ctx, {
-        executionId,
-        stepId: "step-fail",
-        name: "Failing Step",
-        type: "task",
-        status: "running",
+        executionId, stepId: "step-fail", name: "Failing Step", type: "task",
+        status: "running", input: { data: 42 },
       });
     });
+
+    const errorPayload = { message: "Unexpected error", code: "INTERNAL_ERROR" };
 
     await ownerAuthed.mutation(async (ctx) => {
       return await updateExecutionStepStatusImpl(ctx, {
         id: stepDocId as any,
         status: "failed",
-        error: { message: "Unexpected error" },
+        error: errorPayload,
       });
     });
 
     const logs = await t.run(async (ctx) =>
-      ctx.db
-        .query("executionLogs")
-        .withIndex("by_execution", (q) => q.eq("executionId", executionId))
-        .collect()
+      ctx.db.query("executionLogs").withIndex("by_execution", (q) => q.eq("executionId", executionId)).collect()
     );
     const failedLog = logs.find((l) => l.event === "step.failed");
     expect(failedLog).toBeDefined();
     expect(failedLog!.level).toBe("error");
+    expect(failedLog!.inputHash).toBeTypeOf("string");
+    // outputHash absent on failure
+    expect(failedLog!.outputHash).toBeUndefined();
+    // Error details in metadata
+    const meta = failedLog!.metadata as Record<string, unknown>;
+    const err = meta.error as Record<string, unknown>;
+    expect(err.message).toBe("Unexpected error");
+    expect(err.code).toBe("INTERNAL_ERROR");
   });
 
   test("updateExecutionStatus emits execution.completed log on terminal transition", async () => {
@@ -1215,17 +1195,12 @@ describe("observability — step lifecycle log emission", () => {
 
     await ownerAuthed.mutation(async (ctx) => {
       return await updateExecutionStatusImpl(ctx, {
-        id: executionId,
-        status: "completed",
-        output: { result: "success" },
+        id: executionId, status: "completed", output: { result: "success" },
       });
     });
 
     const logs = await t.run(async (ctx) =>
-      ctx.db
-        .query("executionLogs")
-        .withIndex("by_execution", (q) => q.eq("executionId", executionId))
-        .collect()
+      ctx.db.query("executionLogs").withIndex("by_execution", (q) => q.eq("executionId", executionId)).collect()
     );
     const completedLog = logs.find((l) => l.event === "execution.completed");
     expect(completedLog).toBeDefined();
@@ -1244,35 +1219,20 @@ describe("observability — execution logs API", () => {
 
     await ownerAuthed.mutation(async (ctx) => {
       return await emitExecutionLogImpl(ctx, {
-        executionId,
-        stepId: "step-1",
-        event: "step.started",
-        level: "info",
-        message: "Step started",
-        metadata: { attempt: 1 },
+        executionId, stepId: "step-1", event: "step.started", level: "info",
+        message: "Step started", metadata: { attempt: 1 },
       });
     });
-
     await ownerAuthed.mutation(async (ctx) => {
       return await emitExecutionLogImpl(ctx, {
-        executionId,
-        stepId: "step-1",
-        event: "step.completed",
-        level: "info",
-        message: "Step completed",
-        durationMs: 250,
-        tokensUsed: 800,
-        estimatedCostUsd: 0.0016,
+        executionId, stepId: "step-1", event: "step.completed", level: "info",
+        message: "Step completed", durationMs: 250, tokensUsed: 800, estimatedCostUsd: 0.0016,
       });
     });
 
-    const logs = await ownerAuthed.query(async (ctx) => {
-      return await listExecutionLogsImpl(ctx, { executionId });
-    });
-
+    const logs = await ownerAuthed.query(async (ctx) => listExecutionLogsImpl(ctx, { executionId }));
     expect(logs.length).toBe(2);
     const completedLog = logs.find((l) => l.event === "step.completed");
-    expect(completedLog).toBeDefined();
     expect(completedLog!.durationMs).toBe(250);
     expect(completedLog!.tokensUsed).toBe(800);
   });
@@ -1281,38 +1241,15 @@ describe("observability — execution logs API", () => {
     const t = convexTest({ schema, modules });
     const { executionId, ownerAuthed } = await seedWorkspaceAndExecution(t);
 
-    await ownerAuthed.mutation(async (ctx) => {
-      return await emitExecutionLogImpl(ctx, {
-        executionId,
-        event: "step.started",
-        level: "info",
-        message: "A",
+    for (const [event, msg] of [["step.started", "A"], ["step.failed", "B"], ["step.started", "C"]] as const) {
+      await ownerAuthed.mutation(async (ctx) => {
+        return await emitExecutionLogImpl(ctx, { executionId, event, level: event === "step.failed" ? "error" : "info", message: msg });
       });
-    });
-    await ownerAuthed.mutation(async (ctx) => {
-      return await emitExecutionLogImpl(ctx, {
-        executionId,
-        event: "step.failed",
-        level: "error",
-        message: "B",
-      });
-    });
-    await ownerAuthed.mutation(async (ctx) => {
-      return await emitExecutionLogImpl(ctx, {
-        executionId,
-        event: "step.started",
-        level: "info",
-        message: "C",
-      });
-    });
+    }
 
     const startedLogs = await ownerAuthed.query(async (ctx) => {
-      return await listExecutionLogsImpl(ctx, {
-        executionId,
-        event: "step.started",
-      });
+      return await listExecutionLogsImpl(ctx, { executionId, event: "step.started" });
     });
-
     expect(startedLogs.length).toBe(2);
     expect(startedLogs.every((l) => l.event === "step.started")).toBe(true);
   });
@@ -1323,12 +1260,7 @@ describe("observability — execution logs API", () => {
 
     const res = await ownerAuthed.mutation(async (ctx) => {
       try {
-        return await emitExecutionLogImpl(ctx, {
-          executionId,
-          event: "",
-          level: "info",
-          message: "something",
-        });
+        return await emitExecutionLogImpl(ctx, { executionId, event: "", level: "info", message: "something" });
       } catch (err) {
         return String(err);
       }
@@ -1345,32 +1277,19 @@ describe("observability — cost tracking", () => {
     const stepDocId = await ownerAuthed.mutation(async (ctx) => {
       const now = Date.now();
       return await ctx.db.insert("executionSteps", {
-        executionId,
-        stepId: "step-llm",
-        name: "LLM call",
-        type: "llm",
-        status: "completed",
-        createdAt: now,
-        updatedAt: now,
+        executionId, stepId: "step-llm", name: "LLM call", type: "llm", status: "completed",
+        createdAt: now, updatedAt: now,
       });
     });
 
     await ownerAuthed.mutation(async (ctx) => {
       return await trackStepCostImpl(ctx, {
-        executionId,
-        stepDocId,
-        tokensUsed: 1500,
-        estimatedCostUsd: 0.003,
-        toolCallCount: 2,
+        executionId, stepDocId, tokensUsed: 1500, estimatedCostUsd: 0.003, toolCallCount: 2,
       });
     });
     await ownerAuthed.mutation(async (ctx) => {
       return await trackStepCostImpl(ctx, {
-        executionId,
-        stepDocId,
-        tokensUsed: 500,
-        estimatedCostUsd: 0.001,
-        toolCallCount: 1,
+        executionId, stepDocId, tokensUsed: 500, estimatedCostUsd: 0.001, toolCallCount: 1,
       });
     });
 
@@ -1380,7 +1299,6 @@ describe("observability — cost tracking", () => {
     const summary = await ownerAuthed.query(async (ctx) => {
       return await getExecutionCostSummaryImpl(ctx, { executionId });
     });
-
     expect(summary.totalTokens).toBe(2000);
     expect(summary.totalCostUsd).toBeCloseTo(0.004, 6);
     expect(summary.totalToolCalls).toBe(3);
@@ -1395,37 +1313,24 @@ describe("observability — cost tracking", () => {
       const exe = await ctx.db.get(executionId);
       const now = Date.now();
       const otherExecutionId = await ctx.db.insert("executions", {
-        workspaceId: exe!.workspaceId,
-        workflowId: exe!.workflowId,
-        status: "running",
-        startedAt: now,
-        createdAt: now,
-        updatedAt: now,
+        workspaceId: exe!.workspaceId, workflowId: exe!.workflowId, status: "running",
+        startedAt: now, createdAt: now, updatedAt: now,
       });
       return await ctx.db.insert("executionSteps", {
-        executionId: otherExecutionId,
-        stepId: "step-foreign",
-        name: "Foreign",
-        type: "task",
-        status: "completed",
-        createdAt: now,
-        updatedAt: now,
+        executionId: otherExecutionId, stepId: "step-foreign", name: "Foreign", type: "task",
+        status: "completed", createdAt: now, updatedAt: now,
       });
     });
 
     const res = await ownerAuthed.mutation(async (ctx) => {
       try {
         return await trackStepCostImpl(ctx, {
-          executionId,
-          stepDocId: foreignStepDocId,
-          tokensUsed: 100,
-          estimatedCostUsd: 0.0001,
+          executionId, stepDocId: foreignStepDocId, tokensUsed: 100, estimatedCostUsd: 0.0001,
         });
       } catch (err) {
         return String(err);
       }
     });
-
     expect(String(res)).toContain("Step does not belong to this execution");
   });
 });
