@@ -278,6 +278,12 @@ export const deleteOperator = mutation({
 // creates the operator record, instantiates default workflow definitions, and
 // persists workflow records linked to the operator.
 //
+// Trigger scheduling model: trigger definitions are stored as data on each
+// workflow row (trigger.type, trigger.config). The execution engine polls
+// active workflow rows and fires cron/webhook/event triggers; no explicit
+// scheduler-enqueue call is needed at deploy time. This is consistent with
+// how workflows created via createWorkflowImpl work throughout the app.
+//
 
 import { operatorRegistry } from "./operators/index";
 import type { WorkflowDefinition } from "./operators/types";
@@ -290,7 +296,7 @@ export async function deployOperatorImpl(
     rawConfig?: unknown;
   }
 ): Promise<{ operatorId: Id<"operators">; workflowIds: Id<"workflows">[] }> {
-  await requireWorkspaceOwner(ctx, args.workspaceId);
+  const { user } = await requireWorkspaceOwner(ctx, args.workspaceId);
 
   // Validate type is a known operator
   const validation = operatorRegistry.validateConfig(
@@ -342,7 +348,8 @@ export async function deployOperatorImpl(
     });
     workflowIds.push(workflowId);
 
-    // Persist version snapshot
+    // Persist version snapshot — include createdBy for provenance parity
+    // with createWorkflowImpl.
     await ctx.db.insert("workflowVersions", {
       workflowId,
       workspaceId: args.workspaceId,
@@ -354,6 +361,7 @@ export async function deployOperatorImpl(
       status: "active",
       version: 1,
       createdAt: now,
+      createdBy: user._id,
     });
   }
 
