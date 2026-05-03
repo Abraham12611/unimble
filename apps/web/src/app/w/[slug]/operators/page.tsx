@@ -14,7 +14,7 @@ import {
   Trash,
   DotsThree,
   MagnifyingGlass,
-  CircleFill,
+  Circle,
   ArrowClockwise,
   Warning,
 } from "@phosphor-icons/react";
@@ -52,7 +52,7 @@ function StatusBadge({ status }: { status?: string }) {
 
   return (
     <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium ${cfg.text} ${cfg.bg}`}>
-      <CircleFill size={6} className={cfg.dot} />
+      <Circle size={6} weight="fill" className={cfg.dot} />
       {status ?? "idle"}
     </span>
   );

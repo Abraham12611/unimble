@@ -11,7 +11,7 @@ import {
   Play,
   XCircle,
   CheckCircle,
-  CircleFill,
+  Circle,
   Clock,
   ArrowClockwise,
   Warning,
@@ -79,10 +79,10 @@ function StatusIcon({ status, size = 14 }: { status?: string; size?: number }) {
   switch (status) {
     case "completed": return <CheckCircle size={size} weight="fill" className="text-[#22C55E]" />;
     case "failed": return <XCircle size={size} weight="fill" className="text-[#EF4444]" />;
-    case "running": return <CircleFill size={size} className="animate-pulse text-[#3B82F6]" />;
+    case "running": return <Circle size={size} weight="fill" className="animate-pulse text-[#3B82F6]" />;
     case "pending_approval": return <Clock size={size} className="text-[#F59E0B]" />;
     case "cancelled": return <StopCircle size={size} className="text-[#555555]" />;
-    default: return <CircleFill size={size} className="text-[#555555]" />;
+    default: return <Circle size={size} weight="fill" className="text-[#555555]" />;
   }
 }
 
@@ -138,7 +138,7 @@ function StepRow({ step }: { step: Step }) {
               <pre className="rounded-[6px] bg-[#0E0E0E] px-3 py-2 text-[11px] text-[#EF4444] overflow-x-auto whitespace-pre-wrap">{step.error}</pre>
             </div>
           )}
-          {step.output && (
+          {step.output != null && (
             <div>
               <div className="text-[10px] uppercase tracking-wider text-[#555555] mb-1">Output</div>
               <pre className="rounded-[6px] bg-[#0E0E0E] px-3 py-2 text-[11px] text-[#888888] overflow-x-auto whitespace-pre-wrap max-h-40">{JSON.stringify(step.output, null, 2)}</pre>

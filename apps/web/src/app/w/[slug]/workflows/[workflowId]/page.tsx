@@ -14,7 +14,7 @@ import {
   Clock,
   CheckCircle,
   XCircle,
-  CircleFill,
+  Circle,
   Warning,
   Trash,
   Copy,
@@ -51,8 +51,8 @@ function ExecIcon({ status }: { status?: string }) {
   switch (status) {
     case "completed": return <CheckCircle size={12} weight="fill" className="text-[#22C55E]" />;
     case "failed": return <XCircle size={12} weight="fill" className="text-[#EF4444]" />;
-    case "running": return <CircleFill size={12} className="animate-pulse text-[#3B82F6]" />;
-    default: return <CircleFill size={12} className="text-[#555555]" />;
+    case "running": return <Circle size={12} weight="fill" className="animate-pulse text-[#3B82F6]" />;
+    default: return <Circle size={12} weight="fill" className="text-[#555555]" />;
   }
 }
 
@@ -196,7 +196,7 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ slug:
         <div className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-3">
             {[
-              { label: "Status", value: workflow.status ?? "idle", icon: <CircleFill size={10} className={workflow.status === "active" ? "text-[#22C55E]" : "text-[#555555]"} /> },
+              { label: "Status", value: workflow.status ?? "idle", icon: <Circle size={10} weight="fill" className={workflow.status === "active" ? "text-[#22C55E]" : "text-[#555555]"} /> },
               { label: "Trigger", value: trigger.type, icon: <Calendar size={12} /> },
               { label: "Version", value: `v${workflow.version ?? 1}`, icon: <GitBranch size={12} /> },
             ].map((s) => (

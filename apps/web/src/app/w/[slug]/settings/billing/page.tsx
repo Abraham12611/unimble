@@ -34,7 +34,9 @@ const PLANS = [
     current: false,
     cta: "Upgrade to Pro",
   },
-] as const;
+];
+
+type Plan = { id: string; name: string; price: string; period: string; description: string; features: readonly string[]; current: boolean; cta: string; highlight?: boolean };
 
 const USAGE_ITEMS = [
   { label: "Executions this month", used: 0, limit: 100, unit: "" },
@@ -75,7 +77,7 @@ export default function BillingPage() {
 
       {/* Plan cards */}
       <div className="grid gap-3 sm:grid-cols-3">
-        {PLANS.map((plan) => (
+        {(PLANS as Plan[]).map((plan) => (
           <div key={plan.id}
             className={`rounded-[14px] border p-5 ${plan.current ? "border-[rgba(99,102,241,0.4)] bg-[rgba(99,102,241,0.04)]" : plan.highlight ? "border-[rgba(99,102,241,0.2)] bg-[#161616]" : "border-[#222222] bg-[#161616]"}`}>
             <div className="flex items-start justify-between">

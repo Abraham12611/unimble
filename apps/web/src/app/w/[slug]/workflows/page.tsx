@@ -9,7 +9,7 @@ import {
   Plus,
   MagnifyingGlass,
   ArrowClockwise,
-  CircleFill,
+  Circle,
   Calendar,
   Clock,
 } from "@phosphor-icons/react";

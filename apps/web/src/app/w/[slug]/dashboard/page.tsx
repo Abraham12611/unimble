@@ -9,7 +9,7 @@ import {
   Play,
   CheckSquare,
   ArrowRight,
-  CircleFill,
+  Circle,
   Clock,
   CheckCircle,
   XCircle,
@@ -47,9 +47,9 @@ function ExecIcon({ status }: { status?: string }) {
   switch (status) {
     case "completed": return <CheckCircle size={13} weight="fill" />;
     case "failed": return <XCircle size={13} weight="fill" />;
-    case "running": return <CircleFill size={13} className="animate-pulse" />;
+    case "running": return <Circle size={13} weight="fill" className="animate-pulse" />;
     case "pending_approval": return <Clock size={13} />;
-    default: return <CircleFill size={13} />;
+    default: return <Circle size={13} weight="fill" />;
   }
 }
 

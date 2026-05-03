@@ -7,7 +7,7 @@ import { useExecutions, useOperators } from "@/lib/convexHooks";
 import {
   Play,
   MagnifyingGlass,
-  CircleFill,
+  Circle,
   CheckCircle,
   XCircle,
   Clock,
@@ -29,13 +29,13 @@ const STATUS_OPTIONS = ["all", "running", "completed", "failed", "pending_approv
 
 function StatusPill({ status }: { status?: string }) {
   const cfg: Record<string, { icon: React.ReactNode; classes: string }> = {
-    running: { icon: <CircleFill size={8} className="animate-pulse" />, classes: "text-[#3B82F6] bg-[rgba(59,130,246,0.1)]" },
+    running: { icon: <Circle size={8} weight="fill" className="animate-pulse" />, classes: "text-[#3B82F6] bg-[rgba(59,130,246,0.1)]" },
     completed: { icon: <CheckCircle size={10} weight="fill" />, classes: "text-[#22C55E] bg-[rgba(34,197,94,0.1)]" },
     failed: { icon: <XCircle size={10} weight="fill" />, classes: "text-[#EF4444] bg-[rgba(239,68,68,0.1)]" },
     pending_approval: { icon: <Clock size={10} />, classes: "text-[#F59E0B] bg-[rgba(245,158,11,0.1)]" },
     cancelled: { icon: <XCircle size={10} />, classes: "text-[#555555] bg-[rgba(85,85,85,0.1)]" },
   };
-  const c = cfg[status ?? ""] ?? { icon: <CircleFill size={8} />, classes: "text-[#555555] bg-[rgba(85,85,85,0.1)]" };
+  const c = cfg[status ?? ""] ?? { icon: <Circle size={8} weight="fill" />, classes: "text-[#555555] bg-[rgba(85,85,85,0.1)]" };
   return (
     <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium capitalize ${c.classes}`}>
       {c.icon}

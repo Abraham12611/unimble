@@ -13,7 +13,7 @@ import {
   Play,
   Pause,
   Trash,
-  CircleFill,
+  Circle,
   CheckCircle,
   XCircle,
   Clock,
