@@ -201,6 +201,11 @@ export default defineSchema({
     .index("by_status", ["status"])
     .index("by_workspace_and_provider", ["workspaceId", "provider"]),
 
+  // Phase 6.4: Human-in-the-Loop approval records.
+  // Supports approval gates, feedback requests, and escalations.
+  // type: "approval" | "feedback" | "escalation"
+  // status: "pending" | "approved" | "rejected" | "timed-out" | "escalated"
+  // timeoutBehavior: "auto-approve" | "auto-reject" | "escalate"
   approvals: defineTable({
     executionId: v.id("executions"),
     stepId: v.string(),
@@ -211,13 +216,78 @@ export default defineSchema({
     respondedAt: v.optional(v.number()),
     respondedBy: v.optional(v.id("users")),
     feedback: v.optional(v.any()),
+    // Phase 6.4 additions: timeout & escalation configuration
+    timeoutAt: v.optional(v.number()),
+    timeoutBehavior: v.optional(v.string()),
+    escalationChannel: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_execution", ["executionId"])
     .index("by_status", ["status"])
     .index("by_requested_at", ["requestedAt"])
-    .index("by_execution_and_status", ["executionId", "status"]),
+    .index("by_execution_and_status", ["executionId", "status"])
+    .index("by_timeout_at", ["timeoutAt"]),
+
+  // Phase 6.6: Structured step/execution lifecycle log events.
+  // event: "step.started" | "step.completed" | "step.failed" | "step.retried" |
+  //        "step.skipped" | "execution.started" | "execution.completed" | "execution.failed"
+  // level: "debug" | "info" | "warn" | "error"
+  executionLogs: defineTable({
+    executionId: v.id("executions"),
+    workspaceId: v.id("workspaces"),
+    stepId: v.optional(v.string()),
+    event: v.string(),
+    level: v.string(),
+    message: v.string(),
+    durationMs: v.optional(v.number()),
+    inputHash: v.optional(v.string()),
+    outputHash: v.optional(v.string()),
+    tokensUsed: v.optional(v.number()),
+    estimatedCostUsd: v.optional(v.number()),
+    metadata: v.optional(v.any()),
+    timestamp: v.number(),
+  })
+    .index("by_execution", ["executionId"])
+    .index("by_workspace", ["workspaceId"])
+    .index("by_execution_and_event", ["executionId", "event"])
+    .index("by_timestamp", ["timestamp"]),
+
+  // Phase 6.5: Dead-letter queue for permanently failed executions/steps.
+  // A record is written after all retry attempts are exhausted.
+  deadLetterQueue: defineTable({
+    executionId: v.id("executions"),
+    workspaceId: v.id("workspaces"),
+    stepId: v.optional(v.string()),
+    reason: v.string(),
+    originalError: v.optional(v.any()),
+    retryCount: v.number(),
+    resolvedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_execution", ["executionId"])
+    .index("by_workspace", ["workspaceId"])
+    .index("by_workspace_and_unresolved", ["workspaceId", "resolvedAt"]),
+
+  // Phase 6.5: Per-integration/tool circuit breaker state.
+  // key: opaque identifier e.g. "slack:message" or "openrouter:completion"
+  // state: "closed" | "open" | "half-open"
+  circuitBreakers: defineTable({
+    workspaceId: v.id("workspaces"),
+    key: v.string(),
+    state: v.string(),
+    failureCount: v.number(),
+    successCount: v.number(),
+    lastFailureAt: v.optional(v.number()),
+    openedAt: v.optional(v.number()),
+    nextRetryAt: v.optional(v.number()),
+    threshold: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_workspace", ["workspaceId"])
+    .index("by_workspace_and_key", ["workspaceId", "key"]),
 
   events: defineTable({
     workspaceId: v.id("workspaces"),

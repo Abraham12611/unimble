@@ -289,8 +289,7 @@ export async function retryExecutionImpl(ctx: MutationCtx, args: { id: Id<"execu
     updatedAt: now,
   });
 
-  // Delete steps using loop pattern (safe for >16,384 documents)
-
+  // Delete steps (loop pattern — safe for >16,384 documents)
   while (true) {
     const step = await ctx.db
       .query("executionSteps")
@@ -300,8 +299,7 @@ export async function retryExecutionImpl(ctx: MutationCtx, args: { id: Id<"execu
     await ctx.db.delete(step._id);
   }
 
-  // Delete approvals using loop pattern
-
+  // Delete approvals
   while (true) {
     const approval = await ctx.db
       .query("approvals")
@@ -309,6 +307,26 @@ export async function retryExecutionImpl(ctx: MutationCtx, args: { id: Id<"execu
       .first();
     if (!approval) break;
     await ctx.db.delete(approval._id);
+  }
+
+  // Delete execution logs
+  while (true) {
+    const log = await ctx.db
+      .query("executionLogs")
+      .withIndex("by_execution", (q) => q.eq("executionId", args.id))
+      .first();
+    if (!log) break;
+    await ctx.db.delete(log._id);
+  }
+
+  // Delete dead-letter entries
+  while (true) {
+    const dlq = await ctx.db
+      .query("deadLetterQueue")
+      .withIndex("by_execution", (q) => q.eq("executionId", args.id))
+      .first();
+    if (!dlq) break;
+    await ctx.db.delete(dlq._id);
   }
 
   return args.id;
@@ -501,6 +519,10 @@ export const listExecutionApprovals = query({
   },
 });
 
+// ---------------------------------------------------------------------------
+// Phase 6.4: Approval gate, feedback request, and escalation step types
+// ---------------------------------------------------------------------------
+
 export async function createExecutionApprovalImpl(
   ctx: MutationCtx,
   args: {
@@ -509,6 +531,10 @@ export async function createExecutionApprovalImpl(
     type: string;
     content?: unknown;
     status?: string;
+    // Phase 6.4 additions
+    timeoutAt?: number;
+    timeoutBehavior?: string;
+    escalationChannel?: string;
   }
 ) {
   const exe = await ctx.db.get(args.executionId);
@@ -541,6 +567,17 @@ export async function createExecutionApprovalImpl(
     throw new Error("status must be pending");
   }
 
+  // Validate timeoutBehavior if provided
+  const validTimeoutBehaviors = new Set(["auto-approve", "auto-reject", "escalate"]);
+  if (
+    args.timeoutBehavior !== undefined &&
+    !validTimeoutBehaviors.has(args.timeoutBehavior)
+  ) {
+    throw new Error(
+      "timeoutBehavior must be one of: auto-approve, auto-reject, escalate"
+    );
+  }
+
   const now = Date.now();
 
   const approvalId = await ctx.db.insert("approvals", {
@@ -553,6 +590,9 @@ export async function createExecutionApprovalImpl(
     respondedAt: undefined,
     respondedBy: undefined,
     feedback: undefined,
+    timeoutAt: args.timeoutAt,
+    timeoutBehavior: args.timeoutBehavior,
+    escalationChannel: args.escalationChannel,
     createdAt: now,
     updatedAt: now,
   });
@@ -567,6 +607,9 @@ export const createExecutionApproval = mutation({
     type: v.string(),
     content: v.optional(v.any()),
     status: v.optional(v.literal("pending")),
+    timeoutAt: v.optional(v.number()),
+    timeoutBehavior: v.optional(v.string()),
+    escalationChannel: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     return await createExecutionApprovalImpl(ctx, args);
@@ -630,6 +673,108 @@ export const respondExecutionApproval = mutation({
   },
   handler: async (ctx, args) => {
     return await respondExecutionApprovalImpl(ctx, args);
+  },
+});
+
+/**
+ * Phase 6.4: Apply timeout behavior to a pending approval whose timeoutAt has elapsed.
+ *
+ * Behaviors:
+ *   auto-approve  → sets status to "approved" with { timedOut: true } feedback
+ *   auto-reject   → sets status to "rejected" with { timedOut: true } feedback
+ *   escalate      → sets current approval to "escalated" and creates a new approval
+ *                   of type "escalation" pointing to the same step, logging the event
+ *
+ * Returns the approval id (or the new escalation approval id for the "escalate" path).
+ */
+export async function timeoutExecutionApprovalImpl(
+  ctx: MutationCtx,
+  args: { id: Id<"approvals"> }
+) {
+  const approval = await ctx.db.get(args.id);
+  if (!approval) {
+    throw new Error("Approval not found");
+  }
+
+  const exe = await ctx.db.get(approval.executionId);
+  if (!exe) {
+    throw new Error("Execution not found");
+  }
+
+  await requireWorkspaceOwnerOrAdmin(ctx, exe.workspaceId);
+
+  if (approval.status !== "pending") {
+    return args.id;
+  }
+
+  // Only process if actually timed out
+  if (approval.timeoutAt === undefined || Date.now() < approval.timeoutAt) {
+    return args.id;
+  }
+
+  const behavior = approval.timeoutBehavior ?? "auto-reject";
+  const now = Date.now();
+
+  if (behavior === "auto-approve") {
+    await ctx.db.patch(args.id, {
+      status: "approved",
+      feedback: { timedOut: true, autoApproved: true, timedOutAt: now },
+      respondedAt: now,
+      updatedAt: now,
+    });
+    return args.id;
+  }
+
+  if (behavior === "auto-reject") {
+    await ctx.db.patch(args.id, {
+      status: "rejected",
+      feedback: { timedOut: true, autoRejected: true, timedOutAt: now },
+      respondedAt: now,
+      updatedAt: now,
+    });
+    return args.id;
+  }
+
+  // behavior === "escalate"
+  await ctx.db.patch(args.id, {
+    status: "escalated",
+    feedback: { timedOut: true, escalated: true, timedOutAt: now },
+    respondedAt: now,
+    updatedAt: now,
+  });
+
+  // Create a new escalation approval for the same step
+  const escalationId = await ctx.db.insert("approvals", {
+    executionId: approval.executionId,
+    stepId: approval.stepId,
+    type: "escalation",
+    content: {
+      originalApprovalId: approval._id,
+      originalContent: approval.content,
+      escalatedAt: now,
+      channel: approval.escalationChannel ?? "default",
+    },
+    status: "pending",
+    requestedAt: now,
+    respondedAt: undefined,
+    respondedBy: undefined,
+    feedback: undefined,
+    timeoutAt: undefined,
+    timeoutBehavior: undefined,
+    escalationChannel: approval.escalationChannel,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  return escalationId;
+}
+
+export const timeoutExecutionApproval = mutation({
+  args: {
+    id: v.id("approvals"),
+  },
+  handler: async (ctx, args) => {
+    return await timeoutExecutionApprovalImpl(ctx, args);
   },
 });
 
