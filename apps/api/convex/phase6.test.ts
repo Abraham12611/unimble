@@ -462,6 +462,171 @@ describe("human-in-the-loop — timeout behavior", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Phase 6.4: End-to-end Human-in-the-Loop — step pause / resume / fail
+// ---------------------------------------------------------------------------
+
+describe("human-in-the-loop — execution step state transitions (pause/resume)", () => {
+  test("createExecutionApproval pauses a running step to awaiting-approval", async () => {
+    const t = convexTest({ schema, modules });
+    const { executionId, ownerAuthed } = await seedWorkspaceAndExecution(t);
+
+    const stepDocId = await ownerAuthed.mutation(async (ctx) => {
+      return await createExecutionStepImpl(ctx, {
+        executionId, stepId: "step-llm", name: "LLM Generation",
+        type: "llm", status: "running",
+      });
+    });
+
+    await ownerAuthed.mutation(async (ctx) => {
+      return await createExecutionApprovalImpl(ctx, {
+        executionId, stepId: "step-llm", type: "approval",
+        content: { question: "Publish?" },
+      });
+    });
+
+    const step = await t.run(async (ctx) => ctx.db.get(stepDocId as any));
+    expect(step!.status).toBe("awaiting-approval");
+  });
+
+  test("respondExecutionApproval approved → step resumes as queued", async () => {
+    const t = convexTest({ schema, modules });
+    const { executionId, ownerAuthed } = await seedWorkspaceAndExecution(t);
+
+    const stepDocId = await ownerAuthed.mutation(async (ctx) => {
+      return await createExecutionStepImpl(ctx, {
+        executionId, stepId: "step-resume", name: "Paused Step",
+        type: "task", status: "running",
+      });
+    });
+
+    const approvalId = await ownerAuthed.mutation(async (ctx) => {
+      return await createExecutionApprovalImpl(ctx, {
+        executionId, stepId: "step-resume", type: "approval",
+      });
+    });
+
+    await ownerAuthed.mutation(async (ctx) => {
+      return await respondExecutionApprovalImpl(ctx, {
+        id: approvalId, status: "approved", feedback: { note: "LGTM" },
+      });
+    });
+
+    const step = await t.run(async (ctx) => ctx.db.get(stepDocId as any));
+    expect(step!.status).toBe("queued");
+  });
+
+  test("respondExecutionApproval rejected → step transitions to failed", async () => {
+    const t = convexTest({ schema, modules });
+    const { executionId, ownerAuthed } = await seedWorkspaceAndExecution(t);
+
+    const stepDocId = await ownerAuthed.mutation(async (ctx) => {
+      return await createExecutionStepImpl(ctx, {
+        executionId, stepId: "step-rejected", name: "Rejected Step",
+        type: "task", status: "running",
+      });
+    });
+
+    const approvalId = await ownerAuthed.mutation(async (ctx) => {
+      return await createExecutionApprovalImpl(ctx, {
+        executionId, stepId: "step-rejected", type: "approval",
+      });
+    });
+
+    await ownerAuthed.mutation(async (ctx) => {
+      return await respondExecutionApprovalImpl(ctx, {
+        id: approvalId, status: "rejected", feedback: { reason: "Not ready" },
+      });
+    });
+
+    const step = await t.run(async (ctx) => ctx.db.get(stepDocId as any));
+    expect(step!.status).toBe("failed");
+    const err = step!.error as Record<string, unknown>;
+    expect(err.reason).toBe("approval-rejected");
+    expect((err.feedback as Record<string, unknown>).reason).toBe("Not ready");
+  });
+
+  test("timeout auto-approve resumes step as queued", async () => {
+    const t = convexTest({ schema, modules });
+    const { executionId, ownerAuthed } = await seedWorkspaceAndExecution(t);
+
+    const stepDocId = await ownerAuthed.mutation(async (ctx) => {
+      return await createExecutionStepImpl(ctx, {
+        executionId, stepId: "step-timeout-resume", name: "Timeout Approve",
+        type: "llm", status: "running",
+      });
+    });
+
+    const approvalId = await ownerAuthed.mutation(async (ctx) => {
+      return await createExecutionApprovalImpl(ctx, {
+        executionId, stepId: "step-timeout-resume", type: "approval",
+        timeoutAt: Date.now() - 500, timeoutBehavior: "auto-approve",
+      });
+    });
+
+    await ownerAuthed.mutation(async (ctx) => {
+      return await timeoutExecutionApprovalImpl(ctx, { id: approvalId });
+    });
+
+    const step = await t.run(async (ctx) => ctx.db.get(stepDocId as any));
+    expect(step!.status).toBe("queued");
+  });
+
+  test("timeout auto-reject transitions step to failed", async () => {
+    const t = convexTest({ schema, modules });
+    const { executionId, ownerAuthed } = await seedWorkspaceAndExecution(t);
+
+    const stepDocId = await ownerAuthed.mutation(async (ctx) => {
+      return await createExecutionStepImpl(ctx, {
+        executionId, stepId: "step-timeout-fail", name: "Timeout Reject",
+        type: "llm", status: "running",
+      });
+    });
+
+    const approvalId = await ownerAuthed.mutation(async (ctx) => {
+      return await createExecutionApprovalImpl(ctx, {
+        executionId, stepId: "step-timeout-fail", type: "approval",
+        timeoutAt: Date.now() - 500, timeoutBehavior: "auto-reject",
+      });
+    });
+
+    await ownerAuthed.mutation(async (ctx) => {
+      return await timeoutExecutionApprovalImpl(ctx, { id: approvalId });
+    });
+
+    const step = await t.run(async (ctx) => ctx.db.get(stepDocId as any));
+    expect(step!.status).toBe("failed");
+    expect((step!.error as Record<string, unknown>).reason).toBe("approval-rejected");
+  });
+
+  test("escalate leaves step in awaiting-approval pending escalation resolution", async () => {
+    const t = convexTest({ schema, modules });
+    const { executionId, ownerAuthed } = await seedWorkspaceAndExecution(t);
+
+    const stepDocId = await ownerAuthed.mutation(async (ctx) => {
+      return await createExecutionStepImpl(ctx, {
+        executionId, stepId: "step-escalate-hold", name: "Escalated Step",
+        type: "task", status: "running",
+      });
+    });
+
+    const approvalId = await ownerAuthed.mutation(async (ctx) => {
+      return await createExecutionApprovalImpl(ctx, {
+        executionId, stepId: "step-escalate-hold", type: "approval",
+        timeoutAt: Date.now() - 200, timeoutBehavior: "escalate",
+        escalationChannel: "slack-#critical",
+      });
+    });
+
+    await ownerAuthed.mutation(async (ctx) => {
+      return await timeoutExecutionApprovalImpl(ctx, { id: approvalId });
+    });
+
+    const step = await t.run(async (ctx) => ctx.db.get(stepDocId as any));
+    expect(step!.status).toBe("awaiting-approval");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Phase 6.4: Batch timeout processor (scheduler integration point)
 // ---------------------------------------------------------------------------
 
