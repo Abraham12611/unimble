@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Users, Gear, Warning, Shield, Bell } from "@phosphor-icons/react";
+import { Users, Gear, Warning, Shield, Bell, CreditCard, Key } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 import { useWorkspaceContext } from "@/lib/workspace-context";
 
@@ -11,6 +11,8 @@ const SETTINGS_TABS = [
   { href: "roles", icon: Shield, label: "Roles" },
   { href: "general", icon: Gear, label: "General" },
   { href: "notifications", icon: Bell, label: "Notifications" },
+  { href: "billing", icon: CreditCard, label: "Billing" },
+  { href: "api-keys", icon: Key, label: "API Keys" },
   { href: "danger", icon: Warning, label: "Danger Zone" },
 ] as const;
 

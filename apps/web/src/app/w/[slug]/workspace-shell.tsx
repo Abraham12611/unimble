@@ -14,6 +14,7 @@ import {
   Brain,
   Bell,
   MagnifyingGlass,
+  CheckSquare,
 } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 import { useState } from "react";
@@ -26,6 +27,7 @@ const NAV_ITEMS = [
   { href: "operators", icon: Robot, label: "Operators" },
   { href: "workflows", icon: GitBranch, label: "Workflows" },
   { href: "executions", icon: Play, label: "Executions" },
+  { href: "approvals", icon: CheckSquare, label: "Approvals" },
   { href: "integrations", icon: Plugs, label: "Integrations" },
   { href: "analytics", icon: ChartBar, label: "Analytics" },
   { href: "settings", icon: Gear, label: "Settings" },
