@@ -14,10 +14,20 @@
  */
 
 import { v } from "convex/values";
+import { makeFunctionReference } from "convex/server";
 import type { Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { internalMutation, mutation, query } from "../_generated/server";
 import { requireWorkspaceAccess, requireWorkspaceMember } from "../lib/auth";
+
+// ---------------------------------------------------------------------------
+// Function references for scheduling step runner operations
+// ---------------------------------------------------------------------------
+
+const scheduleCheckProgressRef = makeFunctionReference<
+  "mutation",
+  { executionId: Id<"executions"> }
+>("engine/stepRunner:scheduleCheckProgress");
 
 // ---------------------------------------------------------------------------
 // 6.4.1 — Notification dispatch
@@ -255,6 +265,11 @@ export const approveWithEdits = mutation({
         status: "running",
         updatedAt: now,
       });
+
+      // Advance workflow to next ready steps
+      await ctx.scheduler.runAfter(0, scheduleCheckProgressRef, {
+        executionId: execution._id,
+      });
     }
 
     // Create notification for approval response
@@ -408,6 +423,11 @@ export const submitFeedback = mutation({
       await ctx.db.patch(execution._id, {
         status: "running",
         updatedAt: now,
+      });
+
+      // Advance workflow to next ready steps
+      await ctx.scheduler.runAfter(0, scheduleCheckProgressRef, {
+        executionId: execution._id,
       });
     }
 

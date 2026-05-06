@@ -43,6 +43,17 @@ const handleApprovalTimeoutRef = makeFunctionReference<
   { executionId: Id<"executions">; stepRecordId: Id<"executionSteps">; timeoutAction: string }
 >("engine/stepRunner:handleApprovalTimeout");
 
+const notifyApprovalRequestedRef = makeFunctionReference<
+  "mutation",
+  {
+    workspaceId: Id<"workspaces">;
+    executionId: Id<"executions">;
+    stepId: string;
+    approvalType: string;
+    content?: unknown;
+  }
+>("engine/humanLoop:notifyApprovalRequested");
+
 // ---------------------------------------------------------------------------
 // Input resolution — {{stepId.path}} template expansion
 // ---------------------------------------------------------------------------
@@ -595,6 +606,22 @@ export const skipStep = internalMutation({
 // ---------------------------------------------------------------------------
 // Execution progress checker
 // ---------------------------------------------------------------------------
+// Execution progress checker
+// ---------------------------------------------------------------------------
+
+/**
+ * Schedulable wrapper for checkExecutionProgress.
+ * Used by humanLoop.ts mutations (approveWithEdits, submitFeedback)
+ * to advance the workflow after resuming from approval/feedback.
+ */
+export const scheduleCheckProgress = internalMutation({
+  args: {
+    executionId: v.id("executions"),
+  },
+  handler: async (ctx, args) => {
+    await checkExecutionProgress(ctx, args.executionId);
+  },
+});
 
 /**
  * Checks if the execution is complete or if more steps are ready.
@@ -711,6 +738,15 @@ export const pauseForApproval = internalMutation({
     await ctx.db.patch(args.executionId, {
       status: "waiting_approval",
       updatedAt: now,
+    });
+
+    // Notify workspace approvers (owners/admins)
+    await ctx.scheduler.runAfter(0, notifyApprovalRequestedRef, {
+      workspaceId: execution.workspaceId,
+      executionId: args.executionId,
+      stepId: stepRecord.stepId,
+      approvalType: args.approvalType,
+      content: args.content,
     });
 
     // Schedule timeout handler
