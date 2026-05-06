@@ -118,6 +118,7 @@ export default defineSchema({
     steps: v.optional(v.any()),
     status: v.optional(v.string()),
     version: v.optional(v.number()),
+    webhookPath: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -125,7 +126,8 @@ export default defineSchema({
     .index("by_operator", ["operatorId"])
     .index("by_workspace_and_operator", ["workspaceId", "operatorId"])
     .index("by_status", ["status"])
-    .index("by_workspace_and_status", ["workspaceId", "status"]),
+    .index("by_workspace_and_status", ["workspaceId", "status"])
+    .index("by_webhook_path", ["webhookPath"]),
 
   workflowVersions: defineTable({
     workflowId: v.id("workflows"),
