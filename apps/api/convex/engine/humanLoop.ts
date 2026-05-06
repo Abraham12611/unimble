@@ -199,7 +199,15 @@ export const approveWithEdits = mutation({
     const execution = await ctx.db.get(approval.executionId);
     if (!execution) throw new Error("Execution not found");
 
-    const { user } = await requireWorkspaceMember(ctx, execution.workspaceId);
+    const { user, isOwner, isAdmin, memberRole } = await requireWorkspaceMember(
+      ctx,
+      execution.workspaceId
+    );
+
+    // Only owners and admins can approve workflow steps
+    if (!isOwner && !isAdmin && memberRole !== "admin") {
+      throw new Error("Only workspace owners and admins can approve workflow steps");
+    }
 
     if (approval.status !== "pending") {
       throw new Error("Approval has already been responded to");
@@ -281,7 +289,6 @@ export const createFeedbackRequest = internalMutation({
     prompt: v.string(),
     schema: v.optional(v.any()),
     content: v.optional(v.any()),
-    timeoutMs: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const now = Date.now();
@@ -351,7 +358,15 @@ export const submitFeedback = mutation({
     const execution = await ctx.db.get(approval.executionId);
     if (!execution) throw new Error("Execution not found");
 
-    const { user } = await requireWorkspaceMember(ctx, execution.workspaceId);
+    const { user, isOwner, isAdmin, memberRole } = await requireWorkspaceMember(
+      ctx,
+      execution.workspaceId
+    );
+
+    // Only owners and admins can submit feedback
+    if (!isOwner && !isAdmin && memberRole !== "admin") {
+      throw new Error("Only workspace owners and admins can submit feedback");
+    }
 
     if (approval.status !== "pending") {
       throw new Error("Feedback has already been submitted");
@@ -496,7 +511,15 @@ export const resolveEscalation = mutation({
     const escalation = await ctx.db.get(args.escalationId);
     if (!escalation) throw new Error("Escalation not found");
 
-    const { user } = await requireWorkspaceMember(ctx, escalation.workspaceId);
+    const { user, isOwner, isAdmin, memberRole } = await requireWorkspaceMember(
+      ctx,
+      escalation.workspaceId
+    );
+
+    // Only owners and admins can resolve escalations
+    if (!isOwner && !isAdmin && memberRole !== "admin") {
+      throw new Error("Only workspace owners and admins can resolve escalations");
+    }
 
     if (escalation.status === "resolved") {
       throw new Error("Escalation is already resolved");
@@ -563,19 +586,40 @@ export const listNotifications = query({
   handler: async (ctx, args) => {
     const { user } = await requireWorkspaceMember(ctx, args.workspaceId);
 
+    // Get user-specific notifications
+    let userNotifications;
     if (args.unreadOnly) {
-      return await ctx.db
+      userNotifications = await ctx.db
         .query("notifications")
         .withIndex("by_user_and_read", (q) => q.eq("userId", user._id).eq("read", false))
         .order("desc")
         .take(50);
+    } else {
+      userNotifications = await ctx.db
+        .query("notifications")
+        .withIndex("by_user", (q) => q.eq("userId", user._id))
+        .order("desc")
+        .take(50);
     }
 
-    return await ctx.db
+    // Also get workspace-wide notifications (no userId)
+    // These are broadcast notifications visible to all members
+    let workspaceNotifications = await ctx.db
       .query("notifications")
-      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .withIndex("by_workspace", (q) => q.eq("workspaceId", args.workspaceId))
+      .filter((q) => q.eq(q.field("userId"), undefined))
       .order("desc")
-      .take(50);
+      .take(20);
+
+    if (args.unreadOnly) {
+      workspaceNotifications = workspaceNotifications.filter((n) => !n.read);
+    }
+
+    // Merge and sort by createdAt descending
+    const all = [...userNotifications, ...workspaceNotifications];
+    all.sort((a, b) => b.createdAt - a.createdAt);
+
+    return all.slice(0, 50);
   },
 });
 
@@ -590,7 +634,12 @@ export const markNotificationRead = mutation({
     const notification = await ctx.db.get(args.notificationId);
     if (!notification) throw new Error("Notification not found");
 
-    await requireWorkspaceMember(ctx, notification.workspaceId);
+    const { user } = await requireWorkspaceMember(ctx, notification.workspaceId);
+
+    // Ownership check: users can only mark their own notifications as read
+    if (notification.userId !== undefined && notification.userId !== user._id) {
+      throw new Error("Not authorized to mark this notification as read");
+    }
 
     if (notification.read) return args.notificationId;
 
@@ -613,9 +662,12 @@ export const markAllNotificationsRead = mutation({
   handler: async (ctx, args) => {
     const { user } = await requireWorkspaceMember(ctx, args.workspaceId);
 
+    // Query by workspace first, then filter by user to avoid
+    // accidentally marking notifications from other workspaces
     const unread = await ctx.db
       .query("notifications")
-      .withIndex("by_user_and_read", (q) => q.eq("userId", user._id).eq("read", false))
+      .withIndex("by_workspace", (q) => q.eq("workspaceId", args.workspaceId))
+      .filter((q) => q.and(q.eq(q.field("userId"), user._id), q.eq(q.field("read"), false)))
       .collect();
 
     const now = Date.now();
