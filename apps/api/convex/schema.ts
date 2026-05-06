@@ -251,4 +251,46 @@ export default defineSchema({
     .index("by_workspace", ["workspaceId"])
     .index("by_type", ["type"])
     .index("by_status", ["status"]),
+
+  // Notifications — in-app notification system for approvals, escalations, etc.
+  notifications: defineTable({
+    workspaceId: v.id("workspaces"),
+    userId: v.optional(v.id("users")),
+    type: v.string(),
+    title: v.string(),
+    message: v.optional(v.string()),
+    resourceType: v.optional(v.string()),
+    resourceId: v.optional(v.string()),
+    metadata: v.optional(v.any()),
+    read: v.boolean(),
+    readAt: v.optional(v.number()),
+    createdAt: v.number(),
+  })
+    .index("by_workspace", ["workspaceId"])
+    .index("by_user", ["userId"])
+    .index("by_user_and_read", ["userId", "read"])
+    .index("by_workspace_and_type", ["workspaceId", "type"]),
+
+  // Escalations — tracks escalation events for approvals and errors
+  escalations: defineTable({
+    workspaceId: v.id("workspaces"),
+    executionId: v.id("executions"),
+    stepId: v.string(),
+    type: v.string(),
+    reason: v.string(),
+    severity: v.string(),
+    status: v.string(),
+    assignedTo: v.optional(v.id("users")),
+    resolvedAt: v.optional(v.number()),
+    resolvedBy: v.optional(v.id("users")),
+    resolution: v.optional(v.string()),
+    metadata: v.optional(v.any()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_workspace", ["workspaceId"])
+    .index("by_execution", ["executionId"])
+    .index("by_status", ["status"])
+    .index("by_workspace_and_status", ["workspaceId", "status"])
+    .index("by_assigned_to", ["assignedTo"]),
 });
