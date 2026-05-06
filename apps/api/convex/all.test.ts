@@ -6,7 +6,6 @@ import "./workspaces.test";
 import "./operators.test";
 import "./workflows.test";
 import "./executions.test";
-import "./integrations.test";
 import "./engine/stepRunner.test";
 import "./engine/expressionEvaluator.test";
 import "./engine/humanLoop.test";

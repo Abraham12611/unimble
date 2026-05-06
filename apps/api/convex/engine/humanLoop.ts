@@ -586,18 +586,20 @@ export const listNotifications = query({
   handler: async (ctx, args) => {
     const { user } = await requireWorkspaceMember(ctx, args.workspaceId);
 
-    // Get user-specific notifications
+    // Get user-specific notifications scoped to this workspace
     let userNotifications;
     if (args.unreadOnly) {
       userNotifications = await ctx.db
         .query("notifications")
         .withIndex("by_user_and_read", (q) => q.eq("userId", user._id).eq("read", false))
+        .filter((q) => q.eq(q.field("workspaceId"), args.workspaceId))
         .order("desc")
         .take(50);
     } else {
       userNotifications = await ctx.db
         .query("notifications")
         .withIndex("by_user", (q) => q.eq("userId", user._id))
+        .filter((q) => q.eq(q.field("workspaceId"), args.workspaceId))
         .order("desc")
         .take(50);
     }
@@ -697,6 +699,7 @@ export const getUnreadCount = query({
     const unread = await ctx.db
       .query("notifications")
       .withIndex("by_user_and_read", (q) => q.eq("userId", user._id).eq("read", false))
+      .filter((q) => q.eq(q.field("workspaceId"), args.workspaceId))
       .collect();
 
     return { count: unread.length };
