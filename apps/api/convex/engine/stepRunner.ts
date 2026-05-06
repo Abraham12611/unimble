@@ -888,22 +888,51 @@ export const resumeAfterApproval = internalMutation({
         completedAt: now,
         updatedAt: now,
       });
+
+      // Resume execution and advance to next steps
+      await ctx.db.patch(args.executionId, {
+        status: "running",
+        updatedAt: now,
+      });
+
+      await checkExecutionProgress(ctx, args.executionId);
     } else {
+      // Rejection — check if step has continueOnFailure
+      const workflow = await ctx.db.get(execution.workflowId);
+      const definition = workflow?.steps as unknown as WorkflowDefinition | undefined;
+      const stepDef = definition?.steps.find((s) => s.id === stepRecord.stepId);
+
       await ctx.db.patch(args.stepRecordId, {
         status: "failed",
         error: { rejected: true, feedback: args.feedback },
         completedAt: now,
         updatedAt: now,
       });
+
+      if (stepDef?.continueOnFailure) {
+        // Continue despite rejection — advance to next steps
+        await ctx.db.patch(args.executionId, {
+          status: "running",
+          updatedAt: now,
+        });
+        await checkExecutionProgress(ctx, args.executionId);
+      } else {
+        // Fail the entire execution (matches failStep behavior)
+        await ctx.db.patch(args.executionId, {
+          status: "failed",
+          error: {
+            stepId: stepRecord.stepId,
+            stepName: stepRecord.name,
+            error: { rejected: true, feedback: args.feedback },
+            category: "approval_rejected",
+          },
+          completedAt: now,
+          duration: Math.max(0, now - execution.startedAt),
+          updatedAt: now,
+        });
+        await cancelRemainingSteps(ctx, args.executionId);
+      }
     }
-
-    // Resume execution
-    await ctx.db.patch(args.executionId, {
-      status: "running",
-      updatedAt: now,
-    });
-
-    await checkExecutionProgress(ctx, args.executionId);
   },
 });
 

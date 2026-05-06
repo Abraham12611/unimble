@@ -308,6 +308,15 @@ export const createFeedbackRequest = internalMutation({
   handler: async (ctx, args) => {
     const now = Date.now();
 
+    // Pause the execution (same as approval gates)
+    const execution = await ctx.db.get(args.executionId);
+    if (execution && execution.status === "running") {
+      await ctx.db.patch(args.executionId, {
+        status: "waiting_approval",
+        updatedAt: now,
+      });
+    }
+
     // Create approval record with feedback type
     const approvalId = await ctx.db.insert("approvals", {
       executionId: args.executionId,
