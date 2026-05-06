@@ -12,11 +12,36 @@
  */
 
 import { v } from "convex/values";
+import { makeFunctionReference } from "convex/server";
 import type { Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { internalMutation } from "../_generated/server";
 import type { StepContext, WorkflowDefinition, WorkflowStepDef } from "./types";
 import { resolveRetryPolicy } from "./stateMachine";
+
+// ---------------------------------------------------------------------------
+// Function references for scheduling (avoids dependency on generated types)
+// ---------------------------------------------------------------------------
+
+const advanceExecutionRef = makeFunctionReference<
+  "mutation",
+  { executionId: Id<"executions">; stepId: string }
+>("engine/stepRunner:advanceExecution");
+
+const executeStepActionRef = makeFunctionReference<
+  "mutation",
+  { executionId: Id<"executions">; stepRecordId: Id<"executionSteps">; stepContext: unknown }
+>("engine/stepRunner:executeStepAction");
+
+const runStepRef = makeFunctionReference<
+  "action",
+  { executionId: Id<"executions">; stepRecordId: Id<"executionSteps">; stepContext: unknown }
+>("engine/stepHandlers:runStep");
+
+const handleApprovalTimeoutRef = makeFunctionReference<
+  "mutation",
+  { executionId: Id<"executions">; stepRecordId: Id<"executionSteps">; timeoutAction: string }
+>("engine/stepRunner:handleApprovalTimeout");
 
 // ---------------------------------------------------------------------------
 // Input resolution — {{stepId.path}} template expansion
@@ -287,7 +312,7 @@ export const startExecution = internalMutation({
 
     // Schedule ready steps for execution
     for (const step of readySteps) {
-      await ctx.scheduler.runAfter(0, advanceExecution, {
+      await ctx.scheduler.runAfter(0, advanceExecutionRef, {
         executionId: args.executionId,
         stepId: step.id,
       });
@@ -370,7 +395,7 @@ export const advanceExecution = internalMutation({
 
     // Schedule the step handler action
     // The handler action will call completeStep or failStep when done
-    await ctx.scheduler.runAfter(0, executeStepAction, {
+    await ctx.scheduler.runAfter(0, executeStepActionRef, {
       executionId: args.executionId,
       stepRecordId: stepRecord._id,
       stepContext: stepContext as unknown as Record<string, unknown>,
@@ -390,11 +415,8 @@ export const executeStepAction = internalMutation({
     stepContext: v.any(),
   },
   handler: async (ctx, args) => {
-    // This mutation delegates to the step handler action.
-    // The action file (stepHandlers.ts) registers runStep as an
-    // internalAction, so we must use `internal` (not `api`).
-    const { internal } = await import("../_generated/api");
-    await ctx.scheduler.runAfter(0, internal.engine.stepHandlers.runStep, {
+    // Delegate to the "use node" step handler action via function reference.
+    await ctx.scheduler.runAfter(0, runStepRef, {
       executionId: args.executionId,
       stepRecordId: args.stepRecordId,
       stepContext: args.stepContext,
@@ -502,7 +524,7 @@ export const failStep = internalMutation({
 
       // Calculate delay and schedule retry
       const delay = calculateDelay(retryPolicy, currentRetry);
-      await ctx.scheduler.runAfter(delay, advanceExecution, {
+      await ctx.scheduler.runAfter(delay, advanceExecutionRef, {
         executionId: args.executionId,
         stepId: stepRecord.stepId,
       });
@@ -637,7 +659,7 @@ async function checkExecutionProgress(
     }
 
     // This step is ready — schedule it
-    await ctx.scheduler.runAfter(0, advanceExecution, {
+    await ctx.scheduler.runAfter(0, advanceExecutionRef, {
       executionId,
       stepId: stepDef.id,
     });
@@ -693,7 +715,7 @@ export const pauseForApproval = internalMutation({
 
     // Schedule timeout handler
     if (args.timeoutMs > 0) {
-      await ctx.scheduler.runAfter(args.timeoutMs, handleApprovalTimeout, {
+      await ctx.scheduler.runAfter(args.timeoutMs, handleApprovalTimeoutRef, {
         executionId: args.executionId,
         stepRecordId: args.stepRecordId,
         timeoutAction: args.timeoutAction,

@@ -13,12 +13,50 @@
  */
 
 import { v } from "convex/values";
+import { makeFunctionReference } from "convex/server";
 import type { ActionCtx } from "../_generated/server";
 import { internalAction } from "../_generated/server";
+import type { Id } from "../_generated/dataModel";
 import type { StepContext } from "./types";
 import { classifyError } from "./stateMachine";
 import { resolveInputs } from "./stepRunner";
 import { evaluateExpression } from "./expressionEvaluator";
+
+// ---------------------------------------------------------------------------
+// Function references for calling back into mutations
+// ---------------------------------------------------------------------------
+
+const completeStepRef = makeFunctionReference<
+  "mutation",
+  {
+    executionId: Id<"executions">;
+    stepRecordId: Id<"executionSteps">;
+    output?: unknown;
+    cost?: number;
+  }
+>("engine/stepRunner:completeStep");
+
+const failStepRef = makeFunctionReference<
+  "mutation",
+  {
+    executionId: Id<"executions">;
+    stepRecordId: Id<"executionSteps">;
+    error: unknown;
+    errorCategory?: string;
+  }
+>("engine/stepRunner:failStep");
+
+const pauseForApprovalRef = makeFunctionReference<
+  "mutation",
+  {
+    executionId: Id<"executions">;
+    stepRecordId: Id<"executionSteps">;
+    approvalType: string;
+    content?: unknown;
+    timeoutMs: number;
+    timeoutAction: string;
+  }
+>("engine/stepRunner:pauseForApproval");
 
 // ---------------------------------------------------------------------------
 // Main dispatcher
@@ -37,7 +75,6 @@ export const runStep = internalAction({
   handler: async (ctx, args) => {
     const stepCtx = args.stepContext as StepContext;
     const stepDef = stepCtx.currentStep;
-    const { internal } = await import("../_generated/api");
 
     // Apply timeout if configured
     const timeoutMs = stepDef.timeoutMs ?? 300_000; // 5 min default
@@ -81,7 +118,7 @@ export const runStep = internalAction({
       clearTimeout(timeoutId);
 
       // Report completion
-      await ctx.runMutation(internal.engine.stepRunner.completeStep, {
+      await ctx.runMutation(completeStepRef, {
         executionId: args.executionId,
         stepRecordId: args.stepRecordId,
         output,
@@ -96,7 +133,7 @@ export const runStep = internalAction({
       const classified = classifyError(error);
       const errorMessage = error instanceof Error ? error.message : String(error);
 
-      await ctx.runMutation(internal.engine.stepRunner.failStep, {
+      await ctx.runMutation(failStepRef, {
         executionId: args.executionId,
         stepRecordId: args.stepRecordId,
         error: {
@@ -248,30 +285,28 @@ async function handleToolStep(
     case "firecrawl": {
       const { firecrawlScrape, firecrawlCrawl } = await import("../lib/integrations/firecrawl");
       const action = toolName.split(".")[1] ?? "scrape";
-      if (action === "crawl") {
-        const url = String(resolvedParams.url ?? "");
-        return await firecrawlCrawl(url, resolvedParams);
-      }
       const url = String(resolvedParams.url ?? "");
-      return await firecrawlScrape(url, resolvedParams);
+      if (action === "crawl") {
+        return await firecrawlCrawl(url, resolvedParams as Record<string, unknown>);
+      }
+      return await firecrawlScrape(url, resolvedParams as Record<string, unknown>);
     }
 
     case "perplexity": {
       const { perplexitySearch } = await import("../lib/integrations/perplexity");
-      return await perplexitySearch(resolvedParams as Parameters<typeof perplexitySearch>[0]);
+      const query = String(resolvedParams.query ?? resolvedParams.prompt ?? "");
+      return await perplexitySearch(query, resolvedParams as Record<string, unknown>);
     }
 
     default: {
       // Generic tool execution via Composio
-      const { getComposioClient } = await import("../lib/composio");
-      const client = getComposioClient();
-      // Execute via Composio toolkit
-      const result = await client.executeAction({
-        action: toolName,
-        params: resolvedParams,
-        entityId: stepCtx.workspaceId,
-      });
-      return result;
+      // TODO: Implement full Composio action execution in Phase 7
+      // when the agent runtime is built. For now, throw a clear error.
+      throw new Error(
+        `Tool "${toolName}" is not a recognized built-in tool category. ` +
+          `Supported prefixes: llm, firecrawl, perplexity. ` +
+          `Generic Composio tool execution will be available in Phase 7.`
+      );
     }
   }
 }
@@ -635,7 +670,6 @@ async function handleApprovalStep(
   }
 
   const config = stepCtx.currentStep.config;
-  const { internal } = await import("../_generated/api");
 
   // Resolve content reference if provided
   let content: unknown;
@@ -644,9 +678,9 @@ async function handleApprovalStep(
   }
 
   // Create approval record and pause execution via mutation
-  await ctx.runMutation(internal.engine.stepRunner.pauseForApproval, {
-    executionId: executionId as unknown as ReturnType<typeof v.id<"executions">>,
-    stepRecordId: stepRecordId as unknown as ReturnType<typeof v.id<"executionSteps">>,
+  await ctx.runMutation(pauseForApprovalRef, {
+    executionId: executionId as unknown as Id<"executions">,
+    stepRecordId: stepRecordId as unknown as Id<"executionSteps">,
     approvalType: config.approvalType,
     content,
     timeoutMs: config.timeoutMs ?? 86_400_000,
