@@ -416,11 +416,20 @@ async function handleConditionalStep(_ctx: ActionCtx, stepCtx: StepContext): Pro
 // ---------------------------------------------------------------------------
 
 /**
- * Iterates over a collection, executing body steps for each item.
- * Supports sequential and parallel iteration.
+ * Iterates over a collection. The loop step completes with the
+ * resolved collection as output. Body steps are defined as separate
+ * steps in the workflow with `dependsOn: [loopStepId]` — they are
+ * dispatched by checkExecutionProgress after this step completes.
+ *
+ * Body steps access iteration data via:
+ * - `{{loopStepId.items}}` — the full collection
+ * - `{{loopStepId.iterations}}` — total count
+ *
+ * For per-item execution, operators should use the loop output
+ * in agent/tool step prompts to process each item.
  */
 async function handleLoopStep(
-  ctx: ActionCtx,
+  _ctx: ActionCtx,
   stepCtx: StepContext,
   signal: AbortSignal
 ): Promise<unknown> {
@@ -429,6 +438,8 @@ async function handleLoopStep(
   }
 
   const config = stepCtx.currentStep.config;
+
+  if (signal.aborted) throw new Error("Step timed out");
 
   // Resolve the collection reference
   const collection = resolveInputs(
@@ -447,83 +458,19 @@ async function handleLoopStep(
 
   const maxIterations = config.maxIterations ?? 100;
   const items = collection.slice(0, maxIterations);
-  const results: unknown[] = [];
 
-  if (config.parallel) {
-    // Parallel iteration with concurrency limit
-    const concurrency = config.concurrency ?? 5;
-    const chunks: unknown[][] = [];
-
-    for (let i = 0; i < items.length; i += concurrency) {
-      chunks.push(items.slice(i, i + concurrency));
-    }
-
-    for (const chunk of chunks) {
-      if (signal.aborted) throw new Error("Step timed out");
-
-      const chunkResults = await Promise.all(
-        chunk.map((item, idx) => {
-          const iterationContext = {
-            ...stepCtx,
-            stepOutputs: {
-              ...stepCtx.stepOutputs,
-              _loopItem: item,
-              _loopIndex: results.length + idx,
-              _loopTotal: items.length,
-            },
-          };
-          return executeLoopBody(ctx, iterationContext, config.bodySteps, signal);
-        })
-      );
-      results.push(...chunkResults);
-    }
-  } else {
-    // Sequential iteration
-    for (let i = 0; i < items.length; i++) {
-      if (signal.aborted) throw new Error("Step timed out");
-
-      const iterationContext = {
-        ...stepCtx,
-        stepOutputs: {
-          ...stepCtx.stepOutputs,
-          _loopItem: items[i],
-          _loopIndex: i,
-          _loopTotal: items.length,
-        },
-      };
-
-      const result = await executeLoopBody(ctx, iterationContext, config.bodySteps, signal);
-      results.push(result);
-    }
-  }
-
+  // Complete with the resolved collection data.
+  // Body steps (listed in config.bodySteps) should be defined as
+  // separate workflow steps with dependsOn: [thisStepId].
+  // They will be dispatched by checkExecutionProgress automatically.
   return {
-    iterations: results.length,
+    items,
+    iterations: items.length,
     totalItems: collection.length,
     truncated: collection.length > maxIterations,
-    results,
-  };
-}
-
-/**
- * Executes the body steps of a loop iteration.
- * Returns the combined output of all body steps.
- */
-async function executeLoopBody(
-  _ctx: ActionCtx,
-  stepCtx: StepContext,
-  bodyStepIds: string[],
-  signal: AbortSignal
-): Promise<unknown> {
-  if (signal.aborted) throw new Error("Step timed out");
-
-  // For loop body execution, we return the iteration context
-  // The actual step execution is handled by the step runner
-  // via scheduling. Here we just prepare the context.
-  return {
-    loopItem: stepCtx.stepOutputs._loopItem,
-    loopIndex: stepCtx.stepOutputs._loopIndex,
-    bodySteps: bodyStepIds,
+    bodySteps: config.bodySteps,
+    parallel: config.parallel ?? false,
+    concurrency: config.concurrency,
   };
 }
 
@@ -532,8 +479,18 @@ async function executeLoopBody(
 // ---------------------------------------------------------------------------
 
 /**
- * Executes multiple branches concurrently with configurable
- * failure strategies.
+ * Executes multiple branches concurrently. The parallel step
+ * completes with branch metadata as output. Branch steps are
+ * defined as separate steps in the workflow with
+ * `dependsOn: [parallelStepId]` — they are all dispatched
+ * simultaneously by checkExecutionProgress after this step completes.
+ *
+ * Branch steps access parallel config via:
+ * - `{{parallelStepId.branches}}` — list of branch step IDs
+ * - `{{parallelStepId.failureStrategy}}` — how failures are handled
+ *
+ * The failureStrategy is enforced by the step runner when branch
+ * steps complete/fail (via continueOnFailure on branch steps).
  */
 async function handleParallelStep(
   _ctx: ActionCtx,
@@ -549,17 +506,15 @@ async function handleParallelStep(
 
   if (signal.aborted) throw new Error("Step timed out");
 
-  // Parallel steps are orchestrated by the step runner (mutations).
-  // This handler returns the branch configuration so the runner
-  // can schedule all branches and collect results.
-  //
-  // The actual parallel execution happens at the mutation level
-  // where the step runner schedules multiple advanceExecution calls.
+  // Complete with branch configuration.
+  // Branch steps (listed in config.branches) should be defined as
+  // separate workflow steps with dependsOn: [thisStepId].
+  // They will ALL be dispatched by checkExecutionProgress simultaneously
+  // since their single dependency (this step) is now completed.
   return {
     branches: config.branches,
     failureStrategy,
     concurrency: config.concurrency ?? config.branches.length,
-    status: "branches_scheduled",
   };
 }
 
