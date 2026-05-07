@@ -615,7 +615,18 @@ async function handleWaitStep(
 
 /**
  * Executes a data transformation (no external calls).
- * Evaluates a JavaScript expression with access to step outputs.
+ *
+ * Transform expressions are restricted to safe operations:
+ * - Template resolution via {{...}} references
+ * - JSON operations: pick, merge, map keys
+ * - No arbitrary JavaScript execution (prevents RCE)
+ *
+ * The `expression` field supports a safe DSL:
+ * - `{{input.key}}` — resolve a reference (returns native type)
+ * - `pick:key1,key2,key3` — pick keys from the first input
+ * - `merge` — shallow merge all resolved inputs into one object
+ * - `json` — return all resolved inputs as a JSON object
+ * - `template:Hello {{input.name}}` — string interpolation
  */
 async function handleTransformStep(stepCtx: StepContext): Promise<unknown> {
   if (stepCtx.currentStep.type !== "transform") {
@@ -630,20 +641,65 @@ async function handleTransformStep(stepCtx: StepContext): Promise<unknown> {
     resolvedInputs[key] = resolveInputs(ref, stepCtx.stepOutputs, undefined, stepCtx.config);
   }
 
-  // Evaluate the expression in an isolated V8 context via vm.runInNewContext.
-  // This prevents access to Node.js globals (process, require, global, etc.)
-  // that would be available with `new Function()`.
+  const expr = config.expression.trim();
+
   try {
-    const vm = await import("node:vm");
+    // Safe DSL operations
+    if (expr.startsWith("pick:")) {
+      // Pick specific keys from the first input value
+      const keys = expr
+        .slice(5)
+        .split(",")
+        .map((k) => k.trim());
+      const source = Object.values(resolvedInputs)[0];
+      if (source && typeof source === "object" && !Array.isArray(source)) {
+        const picked: Record<string, unknown> = {};
+        for (const key of keys) {
+          if (key in (source as Record<string, unknown>)) {
+            picked[key] = (source as Record<string, unknown>)[key];
+          }
+        }
+        return { result: picked };
+      }
+      return { result: null };
+    }
 
-    // Build a sandbox with only the resolved inputs — no globals
-    const sandbox: Record<string, unknown> = { ...resolvedInputs };
+    if (expr === "merge") {
+      // Shallow merge all inputs
+      const merged: Record<string, unknown> = {};
+      for (const value of Object.values(resolvedInputs)) {
+        if (value && typeof value === "object" && !Array.isArray(value)) {
+          Object.assign(merged, value);
+        }
+      }
+      return { result: merged };
+    }
 
-    const result = vm.runInNewContext(`"use strict"; (${config.expression})`, sandbox, {
-      timeout: 5_000,
-      filename: "transform-step",
-    });
-    return { result };
+    if (expr === "json") {
+      // Return all resolved inputs as-is
+      return { result: resolvedInputs };
+    }
+
+    if (expr.startsWith("template:")) {
+      // String interpolation using {{...}} syntax
+      const template = expr.slice(9);
+      const result = resolveInputs(template, stepCtx.stepOutputs, undefined, stepCtx.config);
+      return { result };
+    }
+
+    // Default: treat the entire expression as a {{...}} reference
+    if (expr.startsWith("{{") && expr.endsWith("}}")) {
+      const result = resolveInputs(expr, stepCtx.stepOutputs, undefined, stepCtx.config);
+      return { result };
+    }
+
+    // If expression matches an input key, return that input
+    if (expr in resolvedInputs) {
+      return { result: resolvedInputs[expr] };
+    }
+
+    // Fallback: return all resolved inputs
+    return { result: resolvedInputs };
   } catch (error) {
     throw new Error(
       `Transform expression failed: ${error instanceof Error ? error.message : String(error)}`
