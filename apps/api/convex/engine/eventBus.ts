@@ -187,6 +187,10 @@ export const emitWorkspaceEvent = mutation({
     resourceId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    // Authenticate first — prevents unauthenticated callers from
+    // probing reserved event-type prefix names via error messages
+    const { user } = await requireWorkspaceMember(ctx, args.workspaceId);
+
     // Guard: reject reserved event type prefixes from public callers
     if (isReservedEventType(args.eventType)) {
       throw new Error(
@@ -194,8 +198,6 @@ export const emitWorkspaceEvent = mutation({
           `User events must use a custom prefix (e.g. "user.").`
       );
     }
-
-    const { user } = await requireWorkspaceMember(ctx, args.workspaceId);
 
     const now = Date.now();
 
