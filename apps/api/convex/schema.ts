@@ -293,4 +293,41 @@ export default defineSchema({
     .index("by_status", ["status"])
     .index("by_workspace_and_status", ["workspaceId", "status"])
     .index("by_assigned_to", ["assignedTo"]),
+
+  // Dead Letter Queue — captures failed executions that exhausted retries
+  deadLetterQueue: defineTable({
+    workspaceId: v.id("workspaces"),
+    executionId: v.id("executions"),
+    workflowId: v.id("workflows"),
+    stepId: v.string(),
+    error: v.any(),
+    errorCategory: v.string(),
+    retryCount: v.number(),
+    status: v.string(),
+    retriedAt: v.optional(v.number()),
+    discardedAt: v.optional(v.number()),
+    discardedBy: v.optional(v.id("users")),
+    metadata: v.optional(v.any()),
+    createdAt: v.number(),
+  })
+    .index("by_workspace", ["workspaceId"])
+    .index("by_execution", ["executionId"])
+    .index("by_status", ["status"])
+    .index("by_workspace_and_status", ["workspaceId", "status"]),
+
+  // Circuit Breakers — per-integration failure tracking
+  circuitBreakers: defineTable({
+    workspaceId: v.id("workspaces"),
+    integrationKey: v.string(),
+    state: v.string(),
+    failureCount: v.number(),
+    lastFailureAt: v.optional(v.number()),
+    lastSuccessAt: v.optional(v.number()),
+    openedAt: v.optional(v.number()),
+    halfOpenAt: v.optional(v.number()),
+    config: v.optional(v.any()),
+    updatedAt: v.number(),
+  })
+    .index("by_workspace", ["workspaceId"])
+    .index("by_workspace_and_key", ["workspaceId", "integrationKey"]),
 });

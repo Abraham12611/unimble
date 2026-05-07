@@ -10,5 +10,7 @@ import "./integrations.test";
 import "./engine/stepRunner.test";
 import "./engine/expressionEvaluator.test";
 import "./engine/humanLoop.test";
+import "./engine/circuitBreaker.test";
+import "./engine/deadLetterQueue.test";
 
 export {};
