@@ -23,36 +23,18 @@ const startExecutionRef = makeFunctionReference<"mutation", { executionId: Id<"e
 );
 
 // ---------------------------------------------------------------------------
-// Signature verification (Convex V8-compatible, no Node.js crypto)
+// Signature verification helpers (used by HTTP action layer)
 // ---------------------------------------------------------------------------
 
 /**
- * Verifies an HMAC-SHA256 webhook signature using constant-time comparison.
- * Uses a simple byte-by-byte comparison that doesn't short-circuit.
- *
- * Note: In the Convex V8 runtime, Node.js crypto is not available.
- * Full HMAC verification requires the Web Crypto API (SubtleCrypto)
- * which is available in Convex actions but not mutations. For now,
- * this performs a constant-time string comparison of the provided
- * signature against the expected value. The actual HMAC computation
- * should be done in the HTTP handler (which runs as an action) before
- * calling this mutation.
- *
- * The `signature` arg is the pre-verified result passed from the
- * HTTP action layer. This mutation trusts the caller (internal only).
+ * Constant-time string comparison to prevent timing attacks.
+ * Used by the HTTP action layer after computing the HMAC.
  */
-export function verifyWebhookSignature(
-  _payload: string,
-  signature: string,
-  expectedSignature: string
-): boolean {
-  if (!signature || !expectedSignature) return false;
-  if (signature.length !== expectedSignature.length) return false;
-
-  // Constant-time comparison to prevent timing attacks
+export function constantTimeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
   let result = 0;
-  for (let i = 0; i < signature.length; i++) {
-    result |= signature.charCodeAt(i) ^ expectedSignature.charCodeAt(i);
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
   }
   return result === 0;
 }
@@ -84,15 +66,22 @@ export function generateWebhookSecret(): string {
 /**
  * Internal mutation: processes an incoming webhook and creates
  * an execution if the workflow matches and signature is valid.
+ *
+ * Signature verification is performed by the HTTP action layer
+ * (which has Node.js crypto access) before calling this mutation.
+ * The `signatureVerified` flag indicates whether the caller already
+ * validated the HMAC. If the workflow has a secret configured and
+ * signatureVerified is false, the request is rejected.
  */
 export const handleWebhookTrigger = internalMutation({
   args: {
     path: v.string(),
-    /** Raw request body string — used for HMAC verification */
+    /** Raw request body string — stored for audit trail */
     rawBody: v.string(),
     /** Parsed payload for storage in the execution input */
     payload: v.optional(v.any()),
-    signature: v.optional(v.string()),
+    /** Whether the HTTP layer verified the HMAC signature */
+    signatureVerified: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const now = Date.now();
@@ -115,16 +104,9 @@ export const handleWebhookTrigger = internalMutation({
       return { ok: false, error: "No matching workflow found" };
     }
 
-    // Verify signature using the raw body string (not re-serialized)
-    // to ensure byte-exact HMAC match with the sender
-    if (trigger.secret) {
-      if (!args.signature) {
-        return { ok: false, error: "Missing webhook signature" };
-      }
-      const valid = verifyWebhookSignature(args.rawBody, args.signature, trigger.secret);
-      if (!valid) {
-        return { ok: false, error: "Invalid webhook signature" };
-      }
+    // If the workflow has a signing secret, require verified signature
+    if (trigger.secret && !args.signatureVerified) {
+      return { ok: false, error: "Invalid webhook signature" };
     }
 
     // Create execution

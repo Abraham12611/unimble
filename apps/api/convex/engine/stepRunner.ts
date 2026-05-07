@@ -804,17 +804,66 @@ async function checkExecutionProgress(
     if (!record || record.status !== "queued") continue;
 
     if (stepDef.dependsOn && stepDef.dependsOn.length > 0) {
-      const allDepsComplete = stepDef.dependsOn.every((depId) => {
+      // Check if all dependencies are in terminal states
+      const allDepsTerminal = stepDef.dependsOn.every((depId) => {
         const depStatus = statusMap.get(depId);
         return depStatus === "completed" || depStatus === "skipped";
       });
-      if (!allDepsComplete) continue;
+      if (!allDepsTerminal) continue;
+
+      // If ANY dependency was skipped, cascade the skip to this step.
+      // This prevents non-selected conditional branches from executing.
+      const anyDepSkipped = stepDef.dependsOn.some((depId) => {
+        return statusMap.get(depId) === "skipped";
+      });
+
+      if (anyDepSkipped) {
+        const now = Date.now();
+        await ctx.db.patch(record._id, {
+          status: "skipped",
+          output: { reason: "dependency_skipped" },
+          completedAt: now,
+          updatedAt: now,
+        });
+        // Re-check progress since we just changed a step's status
+        // (this handles multi-level cascading)
+        continue;
+      }
     }
 
     // This step is ready — schedule it
     await ctx.scheduler.runAfter(0, advanceExecutionRef, {
       executionId,
       stepId: stepDef.id,
+    });
+  }
+
+  // After processing all steps, re-check if cascading skips
+  // created new terminal states that complete the execution
+  const updatedRecords = await ctx.db
+    .query("executionSteps")
+    .withIndex("by_execution", (q) => q.eq("executionId", executionId))
+    .collect();
+
+  const allNowTerminal = updatedRecords.every((r) =>
+    ["completed", "failed", "skipped", "canceled"].includes(r.status)
+  );
+
+  if (allNowTerminal && !allTerminal) {
+    const outputs: Record<string, unknown> = {};
+    for (const record of updatedRecords) {
+      if (record.output !== undefined) {
+        outputs[record.stepId] = record.output;
+      }
+    }
+    const hasFailed = updatedRecords.some((r) => r.status === "failed");
+    const now = Date.now();
+    await ctx.db.patch(executionId, {
+      status: hasFailed ? "failed" : "completed",
+      output: outputs,
+      completedAt: now,
+      duration: Math.max(0, now - execution.startedAt),
+      updatedAt: now,
     });
   }
 }
