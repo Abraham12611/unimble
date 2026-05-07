@@ -7,8 +7,18 @@
  */
 
 import { v } from "convex/values";
+import { makeFunctionReference } from "convex/server";
 import { mutation } from "../_generated/server";
+import type { Id } from "../_generated/dataModel";
 import { requireWorkspaceMember } from "../lib/auth";
+
+// ---------------------------------------------------------------------------
+// Function reference for starting executions after creation
+// ---------------------------------------------------------------------------
+
+const startExecutionRef = makeFunctionReference<"mutation", { executionId: Id<"executions"> }>(
+  "engine/stepRunner:startExecution"
+);
 
 /**
  * Manually triggers a workflow execution.
@@ -54,6 +64,9 @@ export const triggerWorkflow = mutation({
       createdAt: now,
       updatedAt: now,
     });
+
+    // Schedule execution start
+    await ctx.scheduler.runAfter(0, startExecutionRef, { executionId });
 
     return executionId;
   },
@@ -116,6 +129,9 @@ export const triggerOperator = mutation({
       createdAt: now,
       updatedAt: now,
     });
+
+    // Schedule execution start
+    await ctx.scheduler.runAfter(0, startExecutionRef, { executionId });
 
     return executionId;
   },

@@ -15,8 +15,18 @@
  * }
  */
 
+import { makeFunctionReference } from "convex/server";
 import type { MutationCtx } from "../_generated/server";
 import { internalMutation } from "../_generated/server";
+import type { Id } from "../_generated/dataModel";
+
+// ---------------------------------------------------------------------------
+// Function reference for starting executions after creation
+// ---------------------------------------------------------------------------
+
+const startExecutionRef = makeFunctionReference<"mutation", { executionId: Id<"executions"> }>(
+  "engine/stepRunner:startExecution"
+);
 
 // ---------------------------------------------------------------------------
 // Cron expression parsing (simplified)
@@ -239,7 +249,7 @@ export const triggerScheduledWorkflow = internalMutation({
         continue;
       }
 
-      await ctx.db.insert("executions", {
+      const executionId = await ctx.db.insert("executions", {
         workspaceId: wf.workspaceId,
         workflowId: wf._id,
         operatorId: wf.operatorId,
@@ -254,6 +264,9 @@ export const triggerScheduledWorkflow = internalMutation({
         createdAt: now,
         updatedAt: now,
       });
+
+      // Schedule execution start
+      await ctx.scheduler.runAfter(0, startExecutionRef, { executionId });
 
       // Advance nextRunAt so this workflow drops out of the
       // "due" set and won't be re-triggered next tick

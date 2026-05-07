@@ -7,8 +7,18 @@
  */
 
 import { v } from "convex/values";
+import { makeFunctionReference } from "convex/server";
 import { createHmac, timingSafeEqual, randomBytes } from "crypto";
 import { internalMutation } from "../_generated/server";
+import type { Id } from "../_generated/dataModel";
+
+// ---------------------------------------------------------------------------
+// Function reference for starting executions after creation
+// ---------------------------------------------------------------------------
+
+const startExecutionRef = makeFunctionReference<"mutation", { executionId: Id<"executions"> }>(
+  "engine/stepRunner:startExecution"
+);
 
 // ---------------------------------------------------------------------------
 // Signature verification
@@ -121,6 +131,9 @@ export const handleWebhookTrigger = internalMutation({
       createdAt: now,
       updatedAt: now,
     });
+
+    // Schedule execution start
+    await ctx.scheduler.runAfter(0, startExecutionRef, { executionId });
 
     return { ok: true, executionId };
   },
