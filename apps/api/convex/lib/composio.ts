@@ -1,0 +1,203 @@
+"use node";
+
+/**
+ * Composio client wrapper for Unimble.
+ *
+ * Provides a singleton Composio client instance and helper functions
+ * for creating user sessions, checking toolkit connections, and
+ * initiating OAuth authorization flows.
+ *
+ * Must be used from Convex **actions** (not queries/mutations) because
+ * the Composio SDK makes external HTTP calls.
+ *
+ * @see https://docs.composio.dev
+ */
+
+import { Composio } from "@composio/core";
+
+let _client: Composio | null = null;
+
+/**
+ * Returns a singleton Composio client, lazily initialized.
+ * Reads `COMPOSIO_API_KEY` from the Convex environment.
+ */
+export function getComposioClient(): Composio {
+  if (_client) return _client;
+
+  const apiKey = process.env.COMPOSIO_API_KEY;
+  if (!apiKey) {
+    throw new Error("COMPOSIO_API_KEY is not set. Add it to your Convex environment variables.");
+  }
+
+  _client = new Composio({ apiKey });
+  return _client;
+}
+
+/**
+ * Creates a Composio session for a given user.
+ *
+ * Each Unimble workspace maps to a Composio `user_id` so that
+ * connected accounts are scoped per-workspace.
+ *
+ * @param workspaceId - The Convex workspace ID used as the Composio user_id
+ * @param toolkits - Optional list of toolkit slugs to include in the session
+ */
+export async function createComposioSession(workspaceId: string, toolkits?: string[]) {
+  const client = getComposioClient();
+  const session = await client.create(workspaceId, {
+    ...(toolkits ? { toolkits } : {}),
+    manageConnections: false, // We handle OAuth redirects ourselves
+  });
+  return session;
+}
+
+/**
+ * Checks which toolkits are connected for a given workspace.
+ *
+ * @param workspaceId - The Convex workspace ID
+ * @param toolkitSlugs - Optional filter to check specific toolkits only
+ * @returns Array of toolkit connection statuses
+ */
+export async function getToolkitStatuses(workspaceId: string, toolkitSlugs?: string[]) {
+  const session = await createComposioSession(workspaceId, toolkitSlugs);
+  const toolkits = await session.toolkits({
+    ...(toolkitSlugs ? { toolkits: toolkitSlugs } : {}),
+  });
+
+  return toolkits.items.map((toolkit) => ({
+    name: toolkit.name,
+    slug: toolkit.slug,
+    isConnected: toolkit.connection?.isActive ?? false,
+    connectedAccountId: toolkit.connection?.connectedAccount?.id ?? null,
+    connectedAccountStatus: toolkit.connection?.connectedAccount?.status ?? null,
+  }));
+}
+
+/**
+ * Initiates an OAuth authorization flow for a toolkit.
+ *
+ * @param workspaceId - The Convex workspace ID
+ * @param toolkitSlug - The toolkit to authorize (e.g. "github", "gmail")
+ * @param callbackUrl - The OAuth callback URL with HMAC state embedded
+ * @returns The redirect URL the user should visit to complete OAuth
+ */
+export async function initiateToolkitAuth(
+  workspaceId: string,
+  toolkitSlug: string,
+  callbackUrl: string
+) {
+  const session = await createComposioSession(workspaceId, [toolkitSlug]);
+  const connectionRequest = await session.authorize(toolkitSlug, {
+    callbackUrl,
+  });
+
+  return {
+    redirectUrl: connectionRequest.redirectUrl,
+  };
+}
+
+/**
+ * Tests the Composio connection by verifying the API key is valid.
+ * Returns basic account info on success.
+ */
+export async function testComposioConnection(): Promise<{
+  ok: boolean;
+  message: string;
+}> {
+  try {
+    const client = getComposioClient();
+    // Create a test session to verify the API key works
+    const session = await client.create("__unimble_connection_test__");
+    const toolkits = await session.toolkits({ limit: 1 });
+    return {
+      ok: true,
+      message: `Composio connected. ${toolkits.totalPages ?? 0} toolkit pages available.`,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return { ok: false, message: `Composio connection failed: ${message}` };
+  }
+}
+
+/**
+ * Validates an API key for a specific toolkit by attempting to
+ * create a connected account via Composio.
+ *
+ * For API-key-based integrations (Ghost, Dev.to, Hashnode, etc.),
+ * Composio stores the key and validates it against the provider.
+ *
+ * Uses `composio.connectedAccounts.initiate()` with `AuthScheme.APIKey`.
+ * Requires an auth config to be set up in the Composio dashboard for
+ * each API-key-based toolkit.
+ *
+ * @param workspaceId - The Convex workspace ID (Composio user_id)
+ * @param toolkitSlug - The toolkit slug (e.g. "ghost", "devto")
+ * @param apiKey - The user-provided API key
+ * @param authConfigId - The Composio auth config ID for this toolkit
+ * @returns { ok, message, connectedAccountId } indicating result
+ */
+export async function validateApiKeyConnection(
+  workspaceId: string,
+  toolkitSlug: string,
+  apiKey: string,
+  authConfigId?: string
+): Promise<{ ok: boolean; message: string; connectedAccountId?: string }> {
+  try {
+    if (!apiKey.trim()) {
+      return { ok: false, message: "API key cannot be empty" };
+    }
+
+    const { AuthScheme } = await import("@composio/core");
+    const client = getComposioClient();
+
+    // If no auth config ID provided, try using the toolkit slug
+    // as a default (Composio's managed auth configs use the slug)
+    const configId = authConfigId ?? toolkitSlug;
+
+    const connectionRequest = await client.connectedAccounts.initiate(workspaceId, configId, {
+      config: AuthScheme.APIKey({
+        api_key: apiKey.trim(),
+      }),
+    });
+
+    // API key connections are typically immediately active
+    return {
+      ok: true,
+      message: `Successfully connected to ${toolkitSlug}`,
+      connectedAccountId: connectionRequest.id,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return {
+      ok: false,
+      message: `API key validation failed: ${message}`,
+    };
+  }
+}
+
+/**
+ * Revokes a Composio connected account, removing the stored
+ * credentials (OAuth tokens or API keys) from Composio's servers.
+ *
+ * Should be called when a user disconnects an integration to ensure
+ * the external credentials are cleaned up, not just the local DB record.
+ *
+ * @param connectedAccountId - The Composio connected account ID
+ *   (stored in the integration's credentialsRef as "composio:{id}")
+ * @returns { ok, message } indicating result
+ */
+export async function revokeConnectedAccount(
+  connectedAccountId: string
+): Promise<{ ok: boolean; message: string }> {
+  try {
+    const client = getComposioClient();
+    await client.connectedAccounts.delete(connectedAccountId);
+    return { ok: true, message: "Connected account revoked" };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return {
+      ok: false,
+      message: `Failed to revoke connected account: ${message}`,
+    };
+  }
+}
