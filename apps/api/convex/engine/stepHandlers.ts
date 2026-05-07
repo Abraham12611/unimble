@@ -58,6 +58,26 @@ const pauseForApprovalRef = makeFunctionReference<
   }
 >("engine/stepRunner:pauseForApproval");
 
+const deferredCompleteStepRef = makeFunctionReference<
+  "mutation",
+  {
+    executionId: Id<"executions">;
+    stepRecordId: Id<"executionSteps">;
+    output: unknown;
+    delayMs: number;
+  }
+>("engine/stepRunner:deferredCompleteStep");
+
+const completeConditionalStepRef = makeFunctionReference<
+  "mutation",
+  {
+    executionId: Id<"executions">;
+    stepRecordId: Id<"executionSteps">;
+    output: unknown;
+    selectedSteps: string[];
+  }
+>("engine/stepRunner:completeConditionalStep");
+
 // ---------------------------------------------------------------------------
 // Main dispatcher
 // ---------------------------------------------------------------------------
@@ -116,6 +136,47 @@ export const runStep = internalAction({
       }
 
       clearTimeout(timeoutId);
+
+      // Handle deferred wait steps — schedule delayed completion
+      if (
+        stepDef.type === "wait" &&
+        typeof output === "object" &&
+        output !== null &&
+        "deferred" in output &&
+        (output as { deferred?: boolean }).deferred
+      ) {
+        const waitOutput = output as { resumeAt?: number; durationMs?: number };
+        const delayMs = waitOutput.resumeAt
+          ? Math.max(0, waitOutput.resumeAt - Date.now())
+          : (waitOutput.durationMs ?? 0);
+
+        // Schedule a delayed completion
+        await ctx.runMutation(deferredCompleteStepRef, {
+          executionId: args.executionId,
+          stepRecordId: args.stepRecordId,
+          output,
+          delayMs,
+        });
+        return; // Don't complete immediately
+      }
+
+      // Handle conditional steps — skip non-selected branches
+      if (
+        stepDef.type === "conditional" &&
+        typeof output === "object" &&
+        output !== null &&
+        "selectedSteps" in output
+      ) {
+        const condOutput = output as { selectedSteps: string[] };
+        // Complete the conditional step and skip non-selected branches
+        await ctx.runMutation(completeConditionalStepRef, {
+          executionId: args.executionId,
+          stepRecordId: args.stepRecordId,
+          output,
+          selectedSteps: condOutput.selectedSteps,
+        });
+        return; // Don't use normal completion — conditional handler manages branch skipping
+      }
 
       // Report completion
       await ctx.runMutation(completeStepRef, {

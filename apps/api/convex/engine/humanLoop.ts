@@ -29,6 +29,11 @@ const scheduleCheckProgressRef = makeFunctionReference<
   { executionId: Id<"executions"> }
 >("engine/stepRunner:scheduleCheckProgress");
 
+const handleApprovalTimeoutRef = makeFunctionReference<
+  "mutation",
+  { executionId: Id<"executions">; stepRecordId: Id<"executionSteps">; timeoutAction: string }
+>("engine/stepRunner:handleApprovalTimeout");
+
 // ---------------------------------------------------------------------------
 // 6.4.1 — Notification dispatch
 // ---------------------------------------------------------------------------
@@ -299,11 +304,13 @@ export const createFeedbackRequest = internalMutation({
   args: {
     workspaceId: v.id("workspaces"),
     executionId: v.id("executions"),
+    stepRecordId: v.id("executionSteps"),
     stepId: v.string(),
     feedbackType: v.string(),
     prompt: v.string(),
     schema: v.optional(v.any()),
     content: v.optional(v.any()),
+    timeoutMs: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const now = Date.now();
@@ -335,6 +342,16 @@ export const createFeedbackRequest = internalMutation({
       createdAt: now,
       updatedAt: now,
     });
+
+    // Schedule timeout (default 24h) — prevents permanently stuck executions
+    const timeoutMs = args.timeoutMs ?? 86_400_000;
+    if (timeoutMs > 0) {
+      await ctx.scheduler.runAfter(timeoutMs, handleApprovalTimeoutRef, {
+        executionId: args.executionId,
+        stepRecordId: args.stepRecordId,
+        timeoutAction: "cancel",
+      });
+    }
 
     // Notify workspace members
     const members = await ctx.db

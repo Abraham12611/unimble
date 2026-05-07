@@ -43,6 +43,11 @@ const handleApprovalTimeoutRef = makeFunctionReference<
   { executionId: Id<"executions">; stepRecordId: Id<"executionSteps">; timeoutAction: string }
 >("engine/stepRunner:handleApprovalTimeout");
 
+const completeStepAfterDelayRef = makeFunctionReference<
+  "mutation",
+  { executionId: Id<"executions">; stepRecordId: Id<"executionSteps">; output: unknown }
+>("engine/stepRunner:completeStepAfterDelay");
+
 const notifyApprovalRequestedRef = makeFunctionReference<
   "mutation",
   {
@@ -474,6 +479,127 @@ export const completeStep = internalMutation({
     }
 
     // Check if execution is complete or if more steps are ready
+    await checkExecutionProgress(ctx, args.executionId);
+  },
+});
+
+/**
+ * Deferred step completion — schedules a delayed completion for wait steps.
+ * The step stays in "running" state until the delay expires, then completes.
+ */
+export const deferredCompleteStep = internalMutation({
+  args: {
+    executionId: v.id("executions"),
+    stepRecordId: v.id("executionSteps"),
+    output: v.any(),
+    delayMs: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const execution = await ctx.db.get(args.executionId);
+    if (!execution || execution.status !== "running") return;
+
+    const stepRecord = await ctx.db.get(args.stepRecordId);
+    if (!stepRecord || stepRecord.status !== "running") return;
+
+    // Schedule the actual completion after the delay
+    await ctx.scheduler.runAfter(args.delayMs, completeStepAfterDelayRef, {
+      executionId: args.executionId,
+      stepRecordId: args.stepRecordId,
+      output: args.output,
+    });
+  },
+});
+
+/**
+ * Internal: completes a step after a deferred delay has elapsed.
+ */
+export const completeStepAfterDelay = internalMutation({
+  args: {
+    executionId: v.id("executions"),
+    stepRecordId: v.id("executionSteps"),
+    output: v.any(),
+  },
+  handler: async (ctx, args) => {
+    const execution = await ctx.db.get(args.executionId);
+    if (!execution || execution.status !== "running") return;
+
+    const stepRecord = await ctx.db.get(args.stepRecordId);
+    if (!stepRecord || stepRecord.status !== "running") return;
+
+    const now = Date.now();
+    await ctx.db.patch(args.stepRecordId, {
+      status: "completed",
+      output: args.output,
+      completedAt: now,
+      updatedAt: now,
+    });
+
+    await checkExecutionProgress(ctx, args.executionId);
+  },
+});
+
+/**
+ * Completes a conditional step and skips non-selected branches.
+ * Only the steps in `selectedSteps` will be allowed to run;
+ * all other steps that depend on this conditional are skipped.
+ */
+export const completeConditionalStep = internalMutation({
+  args: {
+    executionId: v.id("executions"),
+    stepRecordId: v.id("executionSteps"),
+    output: v.any(),
+    selectedSteps: v.array(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const execution = await ctx.db.get(args.executionId);
+    if (!execution || execution.status !== "running") return;
+
+    const stepRecord = await ctx.db.get(args.stepRecordId);
+    if (!stepRecord || stepRecord.status !== "running") return;
+
+    const now = Date.now();
+
+    // Complete the conditional step itself
+    await ctx.db.patch(args.stepRecordId, {
+      status: "completed",
+      output: args.output,
+      completedAt: now,
+      updatedAt: now,
+    });
+
+    // Load workflow definition to find which steps depend on this conditional
+    const workflow = await ctx.db.get(execution.workflowId);
+    const definition = workflow?.steps as unknown as WorkflowDefinition | undefined;
+    if (!definition) return;
+
+    // Find all steps that depend on this conditional step
+    const conditionalStepId = stepRecord.stepId;
+    const selectedSet = new Set(args.selectedSteps);
+
+    // Get all step records for this execution
+    const allStepRecords = await ctx.db
+      .query("executionSteps")
+      .withIndex("by_execution", (q) => q.eq("executionId", args.executionId))
+      .collect();
+
+    // Skip steps that depend on this conditional but are NOT in selectedSteps
+    for (const stepDef of definition.steps) {
+      if (!stepDef.dependsOn?.includes(conditionalStepId)) continue;
+      if (selectedSet.has(stepDef.id)) continue;
+
+      // This step depends on the conditional but was NOT selected — skip it
+      const record = allStepRecords.find((r) => r.stepId === stepDef.id);
+      if (record && record.status === "queued") {
+        await ctx.db.patch(record._id, {
+          status: "skipped",
+          output: { reason: "conditional_branch_not_selected" },
+          completedAt: now,
+          updatedAt: now,
+        });
+      }
+    }
+
+    // Now advance the execution — selected steps will be scheduled
     await checkExecutionProgress(ctx, args.executionId);
   },
 });
