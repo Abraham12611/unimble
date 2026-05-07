@@ -825,8 +825,8 @@ async function checkExecutionProgress(
           completedAt: now,
           updatedAt: now,
         });
-        // Re-check progress since we just changed a step's status
-        // (this handles multi-level cascading)
+        // Keep in-memory map in sync for multi-level cascading
+        statusMap.set(stepDef.id, "skipped");
         continue;
       }
     }
