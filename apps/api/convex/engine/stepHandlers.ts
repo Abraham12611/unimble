@@ -659,6 +659,7 @@ async function handleWaitStep(
       eventType: config.eventType,
       timeoutMs,
       expiresAt: Date.now() + timeoutMs,
+      resumeAt: Date.now() + timeoutMs,
       deferred: true,
     };
   }

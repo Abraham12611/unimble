@@ -59,28 +59,22 @@ export function verifyWebhookSignature(
 
 /**
  * Generates a unique webhook path.
- * Uses Math.random (sufficient for path uniqueness, not security).
+ * Uses crypto.getRandomValues (Web Crypto API, available in Convex V8).
  */
 export function generateWebhookPath(): string {
-  const bytes = Array.from({ length: 16 }, () =>
-    Math.floor(Math.random() * 256)
-      .toString(16)
-      .padStart(2, "0")
-  ).join("");
-  return "wh_" + bytes;
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return "wh_" + Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 /**
  * Generates a webhook signing secret.
- * Uses Math.random for generation; the secret is stored encrypted.
+ * Uses crypto.getRandomValues (CSPRNG) for cryptographic security.
  */
 export function generateWebhookSecret(): string {
-  const bytes = Array.from({ length: 24 }, () =>
-    Math.floor(Math.random() * 256)
-      .toString(16)
-      .padStart(2, "0")
-  ).join("");
-  return "whsec_" + bytes;
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  return "whsec_" + Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 // ---------------------------------------------------------------------------
