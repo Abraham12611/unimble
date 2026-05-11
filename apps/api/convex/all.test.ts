@@ -12,5 +12,6 @@ import "./engine/expressionEvaluator.test";
 import "./engine/humanLoop.test";
 import "./engine/circuitBreaker.test";
 import "./engine/deadLetterQueue.test";
+import "./engine/stateMachine.test";
 
 export {};
