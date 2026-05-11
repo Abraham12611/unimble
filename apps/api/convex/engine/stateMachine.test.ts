@@ -81,6 +81,12 @@ describe("stateMachine", () => {
       expect(() => assertStepTransition("completed", "running")).toThrow("terminal");
       expect(() => assertStepTransition("queued", "completed")).toThrow("Invalid");
     });
+
+    test("assertStepTransition does not throw on valid transitions", () => {
+      expect(() => assertStepTransition("queued", "running")).not.toThrow();
+      expect(() => assertStepTransition("running", "completed")).not.toThrow();
+      expect(() => assertStepTransition("running", "failed")).not.toThrow();
+    });
   });
 
   describe("state queries", () => {
@@ -185,9 +191,24 @@ describe("stateMachine", () => {
       expect(shouldRetry(classified, DEFAULT_RETRY_POLICY, 3)).toBe(false);
     });
 
-    test("shouldRetry returns false for non-retryable errors", () => {
+    test("shouldRetry returns false for non-retryable errors (via failOn path)", () => {
       const classified = { category: "auth_error" as const, message: "", retryable: false };
       expect(shouldRetry(classified, DEFAULT_RETRY_POLICY, 0)).toBe(false);
+    });
+
+    test("shouldRetry uses retryable field when retryOn/failOn are undefined", () => {
+      const barePolicy = { ...DEFAULT_RETRY_POLICY, retryOn: undefined, failOn: undefined };
+      const nonRetryable = { category: "unknown" as const, message: "", retryable: false };
+      expect(shouldRetry(nonRetryable, barePolicy, 0)).toBe(false);
+
+      const retryable = { category: "unknown" as const, message: "", retryable: true };
+      expect(shouldRetry(retryable, barePolicy, 0)).toBe(true);
+    });
+
+    test("shouldRetry returns false when retryOn is empty array", () => {
+      const policy = { ...DEFAULT_RETRY_POLICY, retryOn: [] as string[] };
+      const classified = { category: "rate_limit" as const, message: "", retryable: true };
+      expect(shouldRetry(classified, policy, 0)).toBe(false);
     });
 
     test("shouldRetry respects failOn list", () => {
@@ -258,6 +279,8 @@ describe("stateMachine", () => {
       expect(policy.backoff).toBe("exponential");
       expect(policy.initialDelayMs).toBe(1000);
       expect(policy.maxDelayMs).toBe(60000);
+      expect(policy.retryOn).toEqual(["rate_limit", "timeout", "server_error", "network_error"]);
+      expect(policy.failOn).toEqual(["auth_error", "validation_error", "not_found"]);
     });
 
     test("merges partial override with defaults", () => {
@@ -266,6 +289,8 @@ describe("stateMachine", () => {
       expect(policy.backoff).toBe("fixed");
       expect(policy.initialDelayMs).toBe(1000); // default
       expect(policy.maxDelayMs).toBe(60000); // default
+      expect(policy.retryOn).toEqual(DEFAULT_RETRY_POLICY.retryOn); // default preserved
+      expect(policy.failOn).toEqual(DEFAULT_RETRY_POLICY.failOn); // default preserved
     });
   });
 });
