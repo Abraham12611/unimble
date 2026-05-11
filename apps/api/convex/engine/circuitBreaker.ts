@@ -194,23 +194,25 @@ export const recordSuccess = internalMutation({
     const state = breaker.state as CircuitState;
     const now = Date.now();
 
-    // Count recent successes in half_open (simplified: use failureCount as inverse)
-    const successCount =
-      state === "half_open"
-        ? Math.max(0, config.halfOpenSuccessThreshold - breaker.failureCount)
-        : 0;
-    const result = onSuccess(state, successCount + 1, config.halfOpenSuccessThreshold);
+    // Track half_open successes with a dedicated counter
+    const currentHalfOpenSuccesses = (breaker.halfOpenSuccessCount ?? 0) + 1;
+    const result = onSuccess(state, currentHalfOpenSuccesses, config.halfOpenSuccessThreshold);
 
     const patch: Record<string, unknown> = {
       lastSuccessAt: now,
       updatedAt: now,
     };
 
+    if (state === "half_open") {
+      patch.halfOpenSuccessCount = currentHalfOpenSuccesses;
+    }
+
     if (result.newState !== state) {
       patch.state = result.newState;
     }
     if (result.resetFailures) {
       patch.failureCount = 0;
+      patch.halfOpenSuccessCount = 0;
       patch.openedAt = undefined;
       patch.halfOpenAt = undefined;
     }
@@ -238,20 +240,24 @@ export const recordFailure = internalMutation({
       .first();
 
     if (!breaker) {
-      // Create breaker on first failure
+      // Create breaker on first failure and check threshold
+      const config = DEFAULT_CONFIG;
+      const result = onFailure("closed", 0, config.failureThreshold);
+
       await ctx.db.insert("circuitBreakers", {
         workspaceId: args.workspaceId,
         integrationKey: args.integrationKey,
-        state: "closed",
+        state: result.newState,
         failureCount: 1,
+        halfOpenSuccessCount: 0,
         lastFailureAt: now,
         lastSuccessAt: undefined,
-        openedAt: undefined,
+        openedAt: result.shouldOpen ? now : undefined,
         halfOpenAt: undefined,
         config: DEFAULT_CONFIG,
         updatedAt: now,
       });
-      return { state: "closed" as CircuitState, opened: false };
+      return { state: result.newState, opened: result.shouldOpen };
     }
 
     const config = (breaker.config as CircuitBreakerConfig) ?? DEFAULT_CONFIG;
@@ -272,6 +278,7 @@ export const recordFailure = internalMutation({
     if (result.shouldOpen) {
       patch.openedAt = now;
       patch.halfOpenAt = undefined;
+      patch.halfOpenSuccessCount = 0;
     }
 
     await ctx.db.patch(breaker._id, patch);
@@ -312,6 +319,7 @@ export const resetCircuitBreaker = mutation({
     await ctx.db.patch(args.breakerId, {
       state: "closed",
       failureCount: 0,
+      halfOpenSuccessCount: 0,
       openedAt: undefined,
       halfOpenAt: undefined,
       updatedAt: Date.now(),

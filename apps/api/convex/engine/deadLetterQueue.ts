@@ -230,12 +230,13 @@ export const getDLQCount = query({
   handler: async (ctx, args) => {
     await requireWorkspaceAccess(ctx, args.workspaceId);
 
+    // Use .take(1000) to cap memory usage for badge counter
     const pending = await ctx.db
       .query("deadLetterQueue")
       .withIndex("by_workspace_and_status", (q) =>
         q.eq("workspaceId", args.workspaceId).eq("status", "pending")
       )
-      .collect();
+      .take(1000);
 
     return { count: pending.length };
   },
