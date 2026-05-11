@@ -89,7 +89,7 @@ export const captureToDLQ = internalMutation({
 export const listDeadLetterQueue = query({
   args: {
     workspaceId: v.id("workspaces"),
-    status: v.optional(v.string()),
+    status: v.optional(v.union(v.literal("pending"), v.literal("retried"), v.literal("discarded"))),
   },
   handler: async (ctx, args) => {
     await requireWorkspaceAccess(ctx, args.workspaceId);
@@ -155,16 +155,21 @@ export const retryFromDLQ = mutation({
 
     // Get the original execution's input
     const originalExecution = await ctx.db.get(entry.executionId);
+    if (!originalExecution) {
+      throw new Error(
+        `Cannot retry DLQ entry: original execution ${entry.executionId} no longer exists`
+      );
+    }
     const now = Date.now();
 
     // Create a new execution
     const executionId = await ctx.db.insert("executions", {
       workspaceId: entry.workspaceId,
       workflowId: entry.workflowId,
-      operatorId: originalExecution?.operatorId,
+      operatorId: originalExecution.operatorId,
       status: "queued",
       input: {
-        ...((originalExecution?.input as Record<string, unknown>) ?? {}),
+        ...((originalExecution.input as Record<string, unknown>) ?? {}),
         retriedFromDLQ: true,
         originalExecutionId: entry.executionId,
       },
@@ -213,7 +218,9 @@ export const discardFromDLQ = mutation({
       status: "discarded",
       discardedAt: Date.now(),
       discardedBy: user._id,
-      metadata: args.reason ? { discardReason: args.reason } : undefined,
+      metadata: args.reason
+        ? { ...((entry.metadata as Record<string, unknown>) ?? {}), discardReason: args.reason }
+        : entry.metadata,
     });
 
     return args.entryId;

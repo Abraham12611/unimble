@@ -299,7 +299,7 @@ export const listCircuitBreakers = query({
     return await ctx.db
       .query("circuitBreakers")
       .withIndex("by_workspace", (q) => q.eq("workspaceId", args.workspaceId))
-      .collect();
+      .take(200);
   },
 });
 
