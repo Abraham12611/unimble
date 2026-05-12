@@ -13,5 +13,6 @@ import "./engine/humanLoop.test";
 import "./engine/circuitBreaker.test";
 import "./engine/deadLetterQueue.test";
 import "./engine/stateMachine.test";
+import "./agent/agentBase.test";
 
 export {};

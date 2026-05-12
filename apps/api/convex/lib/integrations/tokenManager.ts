@@ -81,7 +81,7 @@ export async function checkTokenHealth(
       toolkits: [toolkitSlug],
     });
 
-    const toolkit = toolkits.items.find((t) => t.slug === toolkitSlug);
+    const toolkit = toolkits.items.find((t: { slug: string }) => t.slug === toolkitSlug);
 
     if (!toolkit) {
       return {
@@ -202,7 +202,7 @@ export async function refreshToken(
     const toolkits = await session.toolkits({
       toolkits: [toolkitSlug],
     });
-    const toolkit = toolkits.items.find((t) => t.slug === toolkitSlug);
+    const toolkit = toolkits.items.find((t: { slug: string }) => t.slug === toolkitSlug);
 
     if (toolkit?.connection?.isActive) {
       return {

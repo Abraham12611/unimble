@@ -64,7 +64,8 @@ export async function getToolkitStatuses(workspaceId: string, toolkitSlugs?: str
     ...(toolkitSlugs ? { toolkits: toolkitSlugs } : {}),
   });
 
-  return toolkits.items.map((toolkit) => ({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return toolkits.items.map((toolkit: any) => ({
     name: toolkit.name,
     slug: toolkit.slug,
     isConnected: toolkit.connection?.isActive ?? false,
