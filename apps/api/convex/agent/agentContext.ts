@@ -277,7 +277,10 @@ async function loadRelevantMemories(
     .withIndex("by_workspace", (q) => q.eq("workspaceId", args.workspaceId))
     .filter((q) => q.eq(q.field("status"), "active"));
 
-  const learnings = await learningsQuery.order("desc").take(50);
+  // Fetch more than needed to ensure enough remain after category filtering.
+  // On workspaces with many learnings, a small cap would silently exclude
+  // valid memories that match the requested categories.
+  const learnings = await learningsQuery.order("desc").take(200);
 
   // Apply categories filter if specified
   let filtered = learnings;

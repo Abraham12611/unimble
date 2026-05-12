@@ -159,7 +159,8 @@ export class AgentBase {
           }
         }
 
-        // 4. Execute tool calls (supports parallel tool calls)
+        // 4. Execute tool calls sequentially (preserves order for deterministic results)
+        // Multiple tool calls from a single LLM response are all executed.
         this.state.status = "acting";
         let totalToolCost = 0;
         const observations: string[] = [];
