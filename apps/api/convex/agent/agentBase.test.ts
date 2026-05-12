@@ -262,7 +262,7 @@ describe("AgentBase", () => {
     });
   });
 
-  test("tracks total cost across steps", async () => {
+  test("tracks total cost across steps (LLM + tool costs)", async () => {
     const config = makeConfig();
     const context = makeContext();
     const agent = new AgentBase(config);
@@ -276,14 +276,14 @@ describe("AgentBase", () => {
           toolCalls: [{ name: "calculator.add", arguments: { a: "1", b: "1" } }],
           model: "test-model",
           usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
-          cost: 0.001,
+          cost: 0.01,
         };
       }
       return {
         content: "FINAL_ANSWER: Done",
         model: "test-model",
         usage: { promptTokens: 10, completionTokens: 3, totalTokens: 13 },
-        cost: 0.001,
+        cost: 0.01,
       };
     };
 
@@ -297,7 +297,10 @@ describe("AgentBase", () => {
     const result = await agent.execute(context, mockLLM, mockToolExecutor);
 
     expect(result.status).toBe("complete");
-    expect(result.totalCost).toBe(0.1); // 2 tool calls × $0.05
+    // 2 tool steps: (0.01 LLM + 0.05 tool) × 2 = 0.12
+    // 1 final step: 0.01 LLM
+    // Total: 0.13
+    expect(result.totalCost).toBeCloseTo(0.13, 5);
   });
 
   test("builds initial messages with system prompt and goal", async () => {

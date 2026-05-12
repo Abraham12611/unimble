@@ -14,8 +14,8 @@
 
 import { v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
-import type { MutationCtx, QueryCtx } from "../_generated/server";
-import { internalMutation, query } from "../_generated/server";
+import type { QueryCtx } from "../_generated/server";
+import { internalQuery, query } from "../_generated/server";
 import { requireWorkspaceAccess } from "../lib/auth";
 import type { AgentConfig, AgentContext, MemoryEntry, ToolDefinition } from "./types";
 
@@ -28,7 +28,7 @@ import type { AgentConfig, AgentContext, MemoryEntry, ToolDefinition } from "./t
  * Called before agent execution to gather all necessary context.
  */
 export async function buildAgentContext(
-  ctx: QueryCtx | MutationCtx,
+  ctx: QueryCtx,
   args: {
     workspaceId: Id<"workspaces">;
     operatorId?: Id<"operators">;
@@ -77,9 +77,10 @@ export async function buildAgentContext(
 }
 
 /**
- * Internal mutation: builds agent context and returns it for the action.
+ * Internal query: builds agent context and returns it for the action.
+ * Read-only — does not modify any data.
  */
-export const buildContext = internalMutation({
+export const buildContext = internalQuery({
   args: {
     workspaceId: v.id("workspaces"),
     operatorId: v.optional(v.id("operators")),
@@ -263,7 +264,7 @@ function resolveTools(toolIds: string[]): ToolDefinition[] {
  * Will be extended with vector search in Phase 7.4.
  */
 async function loadRelevantMemories(
-  ctx: QueryCtx | MutationCtx,
+  ctx: QueryCtx,
   args: {
     workspaceId: Id<"workspaces">;
     operatorId?: Id<"operators">;
@@ -271,14 +272,21 @@ async function loadRelevantMemories(
   }
 ): Promise<MemoryEntry[]> {
   // Load recent learnings as memory entries
-  const learnings = await ctx.db
+  const learningsQuery = ctx.db
     .query("learnings")
     .withIndex("by_workspace", (q) => q.eq("workspaceId", args.workspaceId))
-    .filter((q) => q.eq(q.field("status"), "active"))
-    .order("desc")
-    .take(20);
+    .filter((q) => q.eq(q.field("status"), "active"));
 
-  return learnings.map((learning) => ({
+  const learnings = await learningsQuery.order("desc").take(50);
+
+  // Apply categories filter if specified
+  let filtered = learnings;
+  if (args.categories && args.categories.length > 0) {
+    const categorySet = new Set(args.categories);
+    filtered = learnings.filter((l) => categorySet.has(l.type));
+  }
+
+  return filtered.slice(0, 20).map((learning) => ({
     id: learning._id as string,
     scope: "workspace" as const,
     scopeId: args.workspaceId as string,

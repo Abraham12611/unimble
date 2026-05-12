@@ -76,89 +76,120 @@ export class AgentBase {
 
         // 1. Think — ask the LLM what to do
         this.state.status = "thinking";
-        const action = await this.think(llmCall, context);
+        const response = await this.thinkRaw(llmCall, context);
 
-        // 2. Check if agent wants to give final answer
-        if (action.type === "final_answer") {
-          const step: AgentStep = {
-            iteration: this.state.currentIteration,
-            thought: "Providing final answer",
-            action,
-            timestamp: Date.now(),
-            durationMs: Date.now() - stepStart,
-            cost: 0,
-          };
-          this.state.steps.push(step);
-          this.state.status = "complete";
-          this.state.output = action.content;
-          break;
-        }
+        // Track LLM cost
+        const llmCost = response.cost ?? 0;
 
-        // 3. Check if agent wants to ask a human
-        if (action.type === "ask_human") {
-          const step: AgentStep = {
-            iteration: this.state.currentIteration,
-            thought: "Requesting human input",
-            action,
-            timestamp: Date.now(),
-            durationMs: Date.now() - stepStart,
-            cost: 0,
-          };
-          this.state.steps.push(step);
-          this.state.status = "complete";
-          this.state.output = { needsHumanInput: true, question: action.question };
-          break;
-        }
-
-        // 4. Act — execute the tool
-        this.state.status = "acting";
-        let result: ToolResult;
-
-        if (action.type === "tool_call") {
-          result = await toolExecutor(action.toolId, action.params);
-        } else if (action.type === "delegate") {
-          // Delegation is handled by returning the delegation request
-          const step: AgentStep = {
-            iteration: this.state.currentIteration,
-            thought: `Delegating to agent: ${action.agentId}`,
-            action,
-            timestamp: Date.now(),
-            durationMs: Date.now() - stepStart,
-            cost: 0,
-          };
-          this.state.steps.push(step);
-          this.state.status = "complete";
-          this.state.output = { delegated: true, agentId: action.agentId, task: action.task };
-          break;
-        } else {
-          result = { success: false, error: "Unknown action type", durationMs: 0 };
-        }
-
-        // 5. Observe — process the result
-        this.state.status = "observing";
-        const observation = this.formatObservation(result);
-
-        // Record the step
-        const step: AgentStep = {
-          iteration: this.state.currentIteration,
-          thought: this.extractThought(),
-          action,
-          observation,
-          timestamp: Date.now(),
-          durationMs: Date.now() - stepStart,
-          cost: result.cost ?? 0,
-        };
-        this.state.steps.push(step);
-        this.state.totalCost += step.cost;
-
-        // Add tool result to messages
+        // Append assistant message to history (critical for multi-turn)
         this.state.messages.push({
-          role: "tool",
-          content: observation,
-          toolCallId: `call_${this.state.currentIteration}`,
-          toolName: action.type === "tool_call" ? action.toolId : undefined,
+          role: "assistant",
+          content: response.content,
           timestamp: Date.now(),
         });
+
+        // 2. Parse the response into action(s)
+        const actions = this.parseActions(response);
+
+        // 3. Handle non-tool actions (final_answer, ask_human, delegate)
+        if (actions.length === 1 && actions[0].type !== "tool_call") {
+          const action = actions[0];
+
+          if (action.type === "final_answer") {
+            const step: AgentStep = {
+              iteration: this.state.currentIteration,
+              thought: response.content,
+              action,
+              timestamp: Date.now(),
+              durationMs: Date.now() - stepStart,
+              cost: llmCost,
+            };
+            this.state.steps.push(step);
+            this.state.totalCost += llmCost;
+            this.state.status = "complete";
+            this.state.output = action.content;
+            break;
+          }
+
+          if (action.type === "ask_human") {
+            const step: AgentStep = {
+              iteration: this.state.currentIteration,
+              thought: response.content,
+              action,
+              timestamp: Date.now(),
+              durationMs: Date.now() - stepStart,
+              cost: llmCost,
+            };
+            this.state.steps.push(step);
+            this.state.totalCost += llmCost;
+            this.state.status = "complete";
+            this.state.output = { needsHumanInput: true, question: action.question };
+            break;
+          }
+
+          if (action.type === "delegate") {
+            const step: AgentStep = {
+              iteration: this.state.currentIteration,
+              thought: `Delegating to agent: ${action.agentId}`,
+              action,
+              timestamp: Date.now(),
+              durationMs: Date.now() - stepStart,
+              cost: llmCost,
+            };
+            this.state.steps.push(step);
+            this.state.totalCost += llmCost;
+            this.state.status = "complete";
+            this.state.output = { delegated: true, agentId: action.agentId, task: action.task };
+            break;
+          }
+        }
+
+        // 4. Execute tool calls (supports parallel tool calls)
+        this.state.status = "acting";
+        let totalToolCost = 0;
+        const observations: string[] = [];
+
+        for (let i = 0; i < actions.length; i++) {
+          const action = actions[i];
+          if (action.type !== "tool_call") continue;
+
+          const result = await toolExecutor(action.toolId, action.params);
+          totalToolCost += result.cost ?? 0;
+
+          const observation = this.formatObservation(result);
+          observations.push(observation);
+
+          // Use the LLM-assigned tool call ID if available, otherwise generate one
+          const toolCallId =
+            response.toolCalls?.[i]?.id ?? `call_${this.state.currentIteration}_${i}`;
+
+          // Append tool result message with matching ID
+          this.state.messages.push({
+            role: "tool",
+            content: observation,
+            toolCallId,
+            toolName: action.toolId,
+            timestamp: Date.now(),
+          });
+        }
+
+        // 5. Record the step
+        this.state.status = "observing";
+        const stepCost = llmCost + totalToolCost;
+        const step: AgentStep = {
+          iteration: this.state.currentIteration,
+          thought: response.content,
+          action:
+            actions.length === 1
+              ? actions[0]
+              : { type: "tool_call", toolId: "parallel", params: { calls: actions } },
+          observation: observations.join("\n---\n"),
+          timestamp: Date.now(),
+          durationMs: Date.now() - stepStart,
+          cost: stepCost,
+        };
+        this.state.steps.push(step);
+        this.state.totalCost += stepCost;
       }
 
       // Check if we hit max iterations without completing
@@ -181,9 +212,9 @@ export class AgentBase {
 
   /**
    * Asks the LLM to decide the next action.
-   * Returns the parsed action from the LLM response.
+   * Returns the raw LLM response for message history tracking.
    */
-  protected async think(llmCall: LLMCallFn, context: AgentContext): Promise<AgentAction> {
+  protected async thinkRaw(llmCall: LLMCallFn, context: AgentContext): Promise<LLMResponse> {
     const tools = context.tools.map((t) => ({
       type: "function" as const,
       function: {
@@ -193,54 +224,49 @@ export class AgentBase {
       },
     }));
 
-    const response = await llmCall(this.state.messages, {
+    return await llmCall(this.state.messages, {
       tools,
       temperature: this.config.temperature ?? 0.7,
       maxTokens: this.config.maxTokens,
       model: this.config.model,
       tier: this.config.modelTier,
     });
-
-    // Parse the LLM response into an action
-    return this.parseAction(response);
   }
 
   /**
-   * Parses an LLM response into an AgentAction.
+   * Parses an LLM response into one or more AgentActions.
+   * Supports parallel tool calls (multiple actions in one response).
    */
-  protected parseAction(response: LLMResponse): AgentAction {
-    // If the LLM made a tool call
+  protected parseActions(response: LLMResponse): AgentAction[] {
+    // If the LLM made tool calls, return ALL of them
     if (response.toolCalls && response.toolCalls.length > 0) {
-      const call = response.toolCalls[0];
-      return {
-        type: "tool_call",
+      return response.toolCalls.map((call) => ({
+        type: "tool_call" as const,
         toolId: call.name,
         params: call.arguments,
-      };
+      }));
     }
 
-    // If the response contains a final answer marker
+    // Parse text-based actions
     const content = response.content;
 
-    // Check for structured action markers in the response
     if (content.includes("FINAL_ANSWER:")) {
       const answer = content.split("FINAL_ANSWER:")[1].trim();
-      return { type: "final_answer", content: answer };
+      return [{ type: "final_answer", content: answer }];
     }
 
     if (content.includes("ASK_HUMAN:")) {
       const question = content.split("ASK_HUMAN:")[1].trim();
-      return { type: "ask_human", question };
+      return [{ type: "ask_human", question }];
     }
 
     if (content.includes("DELEGATE:")) {
       const parts = content.split("DELEGATE:")[1].trim().split("|");
-      return { type: "delegate", agentId: parts[0]?.trim() ?? "", task: parts[1]?.trim() ?? "" };
+      return [{ type: "delegate", agentId: parts[0]?.trim() ?? "", task: parts[1]?.trim() ?? "" }];
     }
 
     // Default: treat the entire response as a final answer
-    // (agent decided to respond without using tools)
-    return { type: "final_answer", content };
+    return [{ type: "final_answer", content }];
   }
 
   /**
@@ -260,14 +286,6 @@ export class AgentBase {
     }
 
     return JSON.stringify(result.data, null, 2);
-  }
-
-  /**
-   * Extracts the thought/reasoning from the last assistant message.
-   */
-  protected extractThought(): string {
-    const lastAssistant = [...this.state.messages].reverse().find((m) => m.role === "assistant");
-    return lastAssistant?.content ?? "";
   }
 
   // ---------------------------------------------------------------------------
@@ -350,6 +368,8 @@ Otherwise, use the available tools to gather information.`;
 
 /** Tool call format for LLM function calling. */
 export interface LLMToolCall {
+  /** LLM-assigned tool call ID (e.g., "call_abc123") */
+  id?: string;
   name: string;
   arguments: Record<string, unknown>;
 }
