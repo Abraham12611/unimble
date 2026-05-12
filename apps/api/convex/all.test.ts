@@ -14,5 +14,8 @@ import "./engine/circuitBreaker.test";
 import "./engine/deadLetterQueue.test";
 import "./engine/stateMachine.test";
 import "./agent/agentBase.test";
+import "./agent/llmClient.test";
+import "./agent/promptManager.test";
+import "./agent/responseParser.test";
 
 export {};
