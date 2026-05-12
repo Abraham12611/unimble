@@ -192,6 +192,8 @@ export interface AgentExecutionState {
 export interface AgentMessage {
   role: "system" | "user" | "assistant" | "tool";
   content: string;
+  /** Tool calls made by the assistant (required for assistant messages with tool use) */
+  toolCalls?: Array<{ id: string; name: string; arguments: Record<string, unknown> }>;
   /** Tool call ID (for tool responses) */
   toolCallId?: string;
   /** Tool name (for tool responses) */

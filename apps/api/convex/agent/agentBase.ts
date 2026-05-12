@@ -81,10 +81,17 @@ export class AgentBase {
         // Track LLM cost
         const llmCost = response.cost ?? 0;
 
-        // Append assistant message to history (critical for multi-turn)
+        // Append assistant message to history (critical for multi-turn).
+        // Include toolCalls array when present — required by OpenAI-compatible
+        // APIs to match subsequent tool role messages by ID.
         this.state.messages.push({
           role: "assistant",
           content: response.content,
+          toolCalls: response.toolCalls?.map((tc, i) => ({
+            id: tc.id ?? `call_${this.state.currentIteration}_${i}`,
+            name: tc.name,
+            arguments: tc.arguments,
+          })),
           timestamp: Date.now(),
         });
 
