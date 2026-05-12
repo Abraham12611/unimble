@@ -60,6 +60,14 @@ export class AgentBase {
   ): Promise<AgentExecutionState> {
     const startTime = Date.now();
     this.state = context.previousState ?? this.createInitialState(context.goal);
+
+    // Guard: if previousState is already terminal, return it immediately.
+    // Prevents re-executing a completed/failed agent and avoids false failures
+    // when currentIteration === maxIterations.
+    if (this.state.status === "complete" || this.state.status === "failed") {
+      return this.state;
+    }
+
     this.state.status = "thinking";
 
     // Build initial messages
