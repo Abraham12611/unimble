@@ -229,6 +229,10 @@ export async function agentLLMCall(
  *
  * Returns the final assembled LLMResponse after the stream completes.
  * Useful for real-time UI updates during agent execution.
+ *
+ * Includes retry logic (up to 2 retries on 429/5xx) and automatic
+ * fallback to the tier's secondary model, matching the resilience
+ * of the non-streaming `agentLLMCall`.
  */
 export async function agentLLMStream(
   messages: AgentMessage[],
@@ -264,21 +268,8 @@ export async function agentLLMStream(
     body.response_format = { type: "json_object" };
   }
 
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": "https://unimble.app",
-      "X-Title": "Unimble",
-    },
-    body: JSON.stringify(body),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Streaming LLM call failed: HTTP ${response.status}: ${errorText}`);
-  }
+  // Retry + fallback logic for streaming (mirrors non-streaming path)
+  const response = await fetchStreamWithRetry(apiKey, body, tierConfig.fallback);
 
   if (!response.body) {
     throw new Error("No response body for streaming request");
@@ -289,7 +280,8 @@ export async function agentLLMStream(
   const toolCallAccumulator: Map<number, { id: string; name: string; arguments: string }> =
     new Map();
   let finishReason = "unknown";
-  let actualModel = model;
+  let actualModel = (body.model as string) ?? model;
+  let receivedDone = false;
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
@@ -308,6 +300,7 @@ export async function agentLLMStream(
         if (!line.startsWith("data: ")) continue;
         const data = line.slice(6).trim();
         if (data === "[DONE]") {
+          receivedDone = true;
           onChunk({ done: true, finishReason });
           continue;
         }
@@ -355,6 +348,13 @@ export async function agentLLMStream(
     }
   } finally {
     reader.releaseLock();
+
+    // P1 fix: Guarantee done:true is always sent, even on abnormal
+    // stream termination (server early close, network interruption).
+    if (!receivedDone) {
+      const reason = finishReason !== "unknown" ? finishReason : "stream_terminated";
+      onChunk({ done: true, finishReason: reason });
+    }
   }
 
   // Build final tool calls
@@ -376,14 +376,16 @@ export async function agentLLMStream(
     }
   }
 
-  // Estimate cost (usage not always available in streaming)
-  const estimatedPromptTokens = Math.ceil(
-    formattedMessages.reduce(
-      (sum, m) => sum + (typeof m.content === "string" ? m.content.length : 0),
-      0
-    ) / 4
-  );
-  const estimatedCompletionTokens = Math.ceil(fullContent.length / 4);
+  // Estimate cost (usage not always available in streaming).
+  // Use ~3.5 chars/token for English, but account for multi-byte
+  // characters by using byte length / 4 as a more conservative estimate.
+  const promptByteLength = formattedMessages.reduce((sum, m) => {
+    const content = typeof m.content === "string" ? m.content : "";
+    return sum + new TextEncoder().encode(content).length;
+  }, 0);
+  const estimatedPromptTokens = Math.ceil(promptByteLength / 4);
+  const completionByteLength = new TextEncoder().encode(fullContent).length;
+  const estimatedCompletionTokens = Math.ceil(completionByteLength / 4);
   const cost = estimateCost(actualModel, estimatedPromptTokens, estimatedCompletionTokens);
 
   return {
@@ -414,10 +416,21 @@ export async function agentLLMStream(
 function formatMessagesForAPI(messages: AgentMessage[]): Array<Record<string, unknown>> {
   return messages.map((msg) => {
     if (msg.role === "tool") {
+      // tool_call_id is required by OpenAI-compatible APIs and must match
+      // an id from a prior assistant tool_calls array. If missing, this
+      // indicates a bug in the caller — skip the message rather than
+      // sending an invalid id that would cause an API rejection.
+      if (!msg.toolCallId) {
+        // Degrade gracefully: convert to a user message with context
+        return {
+          role: "user",
+          content: `[Tool result for ${msg.toolName ?? "unknown tool"}]: ${msg.content}`,
+        };
+      }
       return {
         role: "tool",
         content: msg.content,
-        tool_call_id: msg.toolCallId ?? "unknown",
+        tool_call_id: msg.toolCallId,
       };
     }
 
@@ -488,6 +501,93 @@ interface CallResult {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   data: any;
   error?: string;
+}
+
+/**
+ * Fetches a streaming response with retry logic and model fallback.
+ *
+ * Retries on 429 (rate limit) and 5xx (server error) up to 2 times,
+ * then falls back to the secondary model if the primary fails.
+ * Returns the raw Response object for stream consumption.
+ */
+async function fetchStreamWithRetry(
+  apiKey: string,
+  body: Record<string, unknown>,
+  fallbackModel: string,
+  maxRetries = 2
+): Promise<Response> {
+  const primaryModel = body.model as string;
+
+  // Try primary model with retries
+  const primaryResult = await attemptStreamFetch(apiKey, body, maxRetries);
+  if (primaryResult) return primaryResult;
+
+  // Fallback to secondary model (if different)
+  if (primaryModel !== fallbackModel) {
+    body.model = fallbackModel;
+    const fallbackResult = await attemptStreamFetch(apiKey, body, maxRetries);
+    if (fallbackResult) return fallbackResult;
+  }
+
+  throw new Error(
+    `Streaming LLM call failed: both primary (${primaryModel}) and fallback (${fallbackModel}) models failed after retries`
+  );
+}
+
+/**
+ * Attempts to fetch a streaming response with retries on transient errors.
+ * Returns the Response on success, or null if all attempts fail.
+ */
+async function attemptStreamFetch(
+  apiKey: string,
+  body: Record<string, unknown>,
+  maxRetries: number
+): Promise<Response | null> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://unimble.app",
+          "X-Title": "Unimble",
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (response.status === 429) {
+        const retryAfter = Number(response.headers.get("retry-after")) || 2;
+        if (attempt < maxRetries) {
+          await sleep(retryAfter * 1000);
+          continue;
+        }
+        return null;
+      }
+
+      if (response.status >= 500) {
+        if (attempt < maxRetries) {
+          await sleep(1000 * (attempt + 1));
+          continue;
+        }
+        return null;
+      }
+
+      if (!response.ok) {
+        return null;
+      }
+
+      return response;
+    } catch {
+      if (attempt < maxRetries) {
+        await sleep(1000 * (attempt + 1));
+        continue;
+      }
+      return null;
+    }
+  }
+
+  return null;
 }
 
 /**

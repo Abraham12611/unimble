@@ -354,3 +354,229 @@ describe("agentLLMCall — fallback and retry", () => {
     ).rejects.toThrow("Agent LLM call failed");
   });
 });
+
+// ---------------------------------------------------------------------------
+// agentLLMStream
+// ---------------------------------------------------------------------------
+
+import { agentLLMStream } from "./llmClient";
+import type { StreamChunk } from "./llmClient";
+
+/**
+ * Creates a mock ReadableStream that emits SSE data lines.
+ */
+function createSSEStream(lines: string[]): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder();
+  const data = lines.map((l) => `data: ${l}\n\n`).join("");
+  const bytes = encoder.encode(data);
+
+  return new ReadableStream({
+    start(controller) {
+      controller.enqueue(bytes);
+      controller.close();
+    },
+  });
+}
+
+function createStreamResponse(lines: string[], ok = true, status = 200) {
+  return {
+    ok,
+    status,
+    headers: new Headers(),
+    body: createSSEStream(lines),
+    json: () => Promise.resolve({}),
+    text: () => Promise.resolve(""),
+  };
+}
+
+describe("agentLLMStream — basic streaming", () => {
+  test("streams content chunks and calls onChunk", async () => {
+    const sseLines = [
+      JSON.stringify({
+        model: "openai/gpt-4o-mini",
+        choices: [{ delta: { content: "Hello" }, finish_reason: null }],
+      }),
+      JSON.stringify({
+        choices: [{ delta: { content: " World" }, finish_reason: null }],
+      }),
+      JSON.stringify({
+        choices: [{ delta: {}, finish_reason: "stop" }],
+      }),
+      "[DONE]",
+    ];
+
+    mockFetch.mockResolvedValueOnce(createStreamResponse(sseLines));
+
+    const chunks: StreamChunk[] = [];
+    const result = await agentLLMStream(
+      [{ role: "user", content: "Hi", timestamp: Date.now() }],
+      { tier: "fast" },
+      (chunk) => chunks.push(chunk)
+    );
+
+    expect(result.content).toBe("Hello World");
+    expect(result.model).toBe("openai/gpt-4o-mini");
+    // Should have content chunks + done
+    expect(chunks.some((c) => c.content === "Hello")).toBe(true);
+    expect(chunks.some((c) => c.content === " World")).toBe(true);
+    expect(chunks.some((c) => c.done === true)).toBe(true);
+  });
+
+  test("streams tool call deltas", async () => {
+    const sseLines = [
+      JSON.stringify({
+        model: "openai/gpt-4o",
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                { index: 0, id: "call_abc", function: { name: "search", arguments: '{"q":' } },
+              ],
+            },
+            finish_reason: null,
+          },
+        ],
+      }),
+      JSON.stringify({
+        choices: [
+          {
+            delta: {
+              tool_calls: [{ index: 0, function: { arguments: '"test"}' } }],
+            },
+            finish_reason: null,
+          },
+        ],
+      }),
+      JSON.stringify({
+        choices: [{ delta: {}, finish_reason: "tool_calls" }],
+      }),
+      "[DONE]",
+    ];
+
+    mockFetch.mockResolvedValueOnce(createStreamResponse(sseLines));
+
+    const chunks: StreamChunk[] = [];
+    const result = await agentLLMStream(
+      [{ role: "user", content: "Search", timestamp: Date.now() }],
+      {},
+      (chunk) => chunks.push(chunk)
+    );
+
+    expect(result.toolCalls).toHaveLength(1);
+    expect(result.toolCalls![0].id).toBe("call_abc");
+    expect(result.toolCalls![0].name).toBe("search");
+    expect(result.toolCalls![0].arguments).toEqual({ q: "test" });
+    expect(chunks.some((c) => c.toolCallDelta?.name === "search")).toBe(true);
+  });
+});
+
+describe("agentLLMStream — done:true guarantee", () => {
+  test("sends done:true even when stream ends without [DONE] sentinel", async () => {
+    // Stream that closes without sending [DONE]
+    const sseLines = [
+      JSON.stringify({
+        model: "openai/gpt-4o-mini",
+        choices: [{ delta: { content: "Partial" }, finish_reason: null }],
+      }),
+      // No [DONE] — stream just ends
+    ];
+
+    mockFetch.mockResolvedValueOnce(createStreamResponse(sseLines));
+
+    const chunks: StreamChunk[] = [];
+    const result = await agentLLMStream(
+      [{ role: "user", content: "Hi", timestamp: Date.now() }],
+      { tier: "fast" },
+      (chunk) => chunks.push(chunk)
+    );
+
+    expect(result.content).toBe("Partial");
+    // Must still receive done:true
+    const doneChunk = chunks.find((c) => c.done === true);
+    expect(doneChunk).toBeDefined();
+    expect(doneChunk!.finishReason).toBe("stream_terminated");
+  });
+
+  test("does not send duplicate done:true when [DONE] is received normally", async () => {
+    const sseLines = [
+      JSON.stringify({
+        choices: [{ delta: { content: "OK" }, finish_reason: "stop" }],
+      }),
+      "[DONE]",
+    ];
+
+    mockFetch.mockResolvedValueOnce(createStreamResponse(sseLines));
+
+    const chunks: StreamChunk[] = [];
+    await agentLLMStream(
+      [{ role: "user", content: "Hi", timestamp: Date.now() }],
+      { tier: "fast" },
+      (chunk) => chunks.push(chunk)
+    );
+
+    const doneChunks = chunks.filter((c) => c.done === true);
+    expect(doneChunks).toHaveLength(1);
+  });
+});
+
+describe("agentLLMStream — retry and fallback", () => {
+  test("retries on 429 and succeeds", async () => {
+    // First attempt: 429
+    mockFetch.mockResolvedValueOnce(createStreamResponse([], false, 429));
+    // Second attempt: success
+    const sseLines = [
+      JSON.stringify({ choices: [{ delta: { content: "OK" }, finish_reason: "stop" }] }),
+      "[DONE]",
+    ];
+    mockFetch.mockResolvedValueOnce(createStreamResponse(sseLines));
+
+    const chunks: StreamChunk[] = [];
+    const result = await agentLLMStream(
+      [{ role: "user", content: "Hi", timestamp: Date.now() }],
+      { tier: "fast" },
+      (chunk) => chunks.push(chunk)
+    );
+
+    expect(result.content).toBe("OK");
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  test("falls back to secondary model when primary fails", async () => {
+    // Primary: all retries fail (500)
+    mockFetch.mockResolvedValueOnce(createStreamResponse([], false, 500));
+    mockFetch.mockResolvedValueOnce(createStreamResponse([], false, 500));
+    mockFetch.mockResolvedValueOnce(createStreamResponse([], false, 500));
+    // Fallback: succeeds
+    const sseLines = [
+      JSON.stringify({
+        model: "openai/gpt-4o",
+        choices: [{ delta: { content: "Fallback" }, finish_reason: "stop" }],
+      }),
+      "[DONE]",
+    ];
+    mockFetch.mockResolvedValueOnce(createStreamResponse(sseLines));
+
+    const chunks: StreamChunk[] = [];
+    const result = await agentLLMStream(
+      [{ role: "user", content: "Hi", timestamp: Date.now() }],
+      { tier: "generation" },
+      (chunk) => chunks.push(chunk)
+    );
+
+    expect(result.content).toBe("Fallback");
+    expect(result.model).toBe("openai/gpt-4o");
+  });
+
+  test("throws when both primary and fallback fail", async () => {
+    // All calls fail
+    mockFetch.mockResolvedValue(createStreamResponse([], false, 500));
+
+    await expect(
+      agentLLMStream(
+        [{ role: "user", content: "Hi", timestamp: Date.now() }],
+        { tier: "fast" },
+        () => {}
+      )
+    ).rejects.toThrow("Streaming LLM call failed");
+  });
+});
