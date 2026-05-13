@@ -17,5 +17,6 @@ import "./agent/agentBase.test";
 import "./agent/llmClient.test";
 import "./agent/promptManager.test";
 import "./agent/responseParser.test";
+import "./agent/toolRegistry.test";
 
 export {};
