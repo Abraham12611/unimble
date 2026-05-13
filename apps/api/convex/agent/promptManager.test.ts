@@ -121,6 +121,103 @@ describe("renderPrompt — conditionals", () => {
     const result = renderPrompt("{{#if value}}Present{{/if}}", { value: null });
     expect(result.text).toBe("");
   });
+
+  test("handles nested if-else blocks correctly (P1 regression)", () => {
+    // Greptile P1: nested if-else must not confuse inner/outer {{else}}/{{/if}}
+    const template =
+      "{{#if a}}{{#if b}}inner{{else}}inner-else{{/if}}outer{{else}}outer-else{{/if}}";
+    const result = renderPrompt(template, { a: true, b: false });
+    expect(result.text).toBe("inner-elseouter");
+  });
+
+  test("nested if-else with outer false", () => {
+    const template =
+      "{{#if a}}{{#if b}}inner{{else}}inner-else{{/if}}outer{{else}}outer-else{{/if}}";
+    const result = renderPrompt(template, { a: false, b: true });
+    expect(result.text).toBe("outer-else");
+  });
+
+  test("nested if-else with both true", () => {
+    const template =
+      "{{#if a}}{{#if b}}inner{{else}}inner-else{{/if}}outer{{else}}outer-else{{/if}}";
+    const result = renderPrompt(template, { a: true, b: true });
+    expect(result.text).toBe("innerouter");
+  });
+
+  test("deeply nested conditionals (3 levels)", () => {
+    const template = "{{#if a}}A{{#if b}}B{{#if c}}C{{else}}notC{{/if}}{{/if}}{{else}}notA{{/if}}";
+    expect(renderPrompt(template, { a: true, b: true, c: true }).text).toBe("ABC");
+    expect(renderPrompt(template, { a: true, b: true, c: false }).text).toBe("ABnotC");
+    expect(renderPrompt(template, { a: true, b: false, c: true }).text).toBe("A");
+    expect(renderPrompt(template, { a: false, b: true, c: true }).text).toBe("notA");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// renderPrompt — Conditionals inside Each Loops
+// ---------------------------------------------------------------------------
+
+describe("renderPrompt — conditionals inside each", () => {
+  test("{{#if this.property}} evaluates against current item (P1 regression)", () => {
+    // Greptile P1: conditionals inside each must resolve against the item, not outer scope
+    const template = "{{#each items}}{{#if this.active}}✓ {{this.name}}{{/if}}{{/each}}";
+    const result = renderPrompt(template, {
+      items: [
+        { name: "Alice", active: true },
+        { name: "Bob", active: false },
+        { name: "Charlie", active: true },
+      ],
+    });
+    expect(result.text).toBe("✓ Alice✓ Charlie");
+  });
+
+  test("{{#if this.property}} with else branch inside each", () => {
+    const template =
+      "{{#each items}}{{#if this.active}}[ON]{{else}}[OFF]{{/if}} {{this.name}}\n{{/each}}";
+    const result = renderPrompt(template, {
+      items: [
+        { name: "A", active: true },
+        { name: "B", active: false },
+      ],
+    });
+    expect(result.text).toBe("[ON] A\n[OFF] B");
+  });
+
+  test("nested each with conditionals", () => {
+    const template =
+      "{{#each groups}}Group {{this.name}}:\n{{#each this.members}}{{#if this.lead}}  * {{this.name}} (lead)\n{{else}}  - {{this.name}}\n{{/if}}{{/each}}{{/each}}";
+    const result = renderPrompt(template, {
+      groups: [
+        {
+          name: "Alpha",
+          members: [
+            { name: "Alice", lead: true },
+            { name: "Bob", lead: false },
+          ],
+        },
+      ],
+    });
+    expect(result.text).toContain("* Alice (lead)");
+    expect(result.text).toContain("- Bob");
+  });
+
+  test("outer variables still accessible inside each", () => {
+    const template = "{{#each items}}{{#if showAll}}{{this}}{{/if}}{{/each}}";
+    const result = renderPrompt(template, {
+      items: ["a", "b", "c"],
+      showAll: true,
+    });
+    expect(result.text).toBe("abc");
+  });
+
+  test("outer variables falsy hides content inside each", () => {
+    const template = "{{#each items}}{{#if showAll}}{{this}}{{/if}}{{/each}}";
+    const result = renderPrompt(template, {
+      items: ["a", "b", "c"],
+      showAll: false,
+    });
+    expect(result.text).toBe("");
+  });
 });
 
 // ---------------------------------------------------------------------------

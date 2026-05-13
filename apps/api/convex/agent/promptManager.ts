@@ -92,11 +92,20 @@ export function renderPrompt(
   const usedVariables: string[] = [];
   const missingVariables: string[] = [];
 
-  // Process conditionals first (they may contain variables)
+  // Process all block structures (if/unless/each) with proper nesting
   let result = processConditionals(templateStr, variables);
 
-  // Process each loops
-  result = processEachLoops(result, variables, usedVariables);
+  // processEachLoops is now a no-op — each is handled by processBlocks.
+  // Track used each variables by scanning the original template.
+  const eachVarRegex = /\{\{#each\s+([^}]+)\}\}/g;
+  let eachMatch;
+  while ((eachMatch = eachVarRegex.exec(templateStr)) !== null) {
+    const varName = eachMatch[1].trim();
+    const value = resolveVariable(varName, variables);
+    if (Array.isArray(value) && value.length > 0) {
+      usedVariables.push(varName);
+    }
+  }
 
   // Process variable interpolation
   result = result.replace(/\{\{([^}]+)\}\}/g, (_match, expr: string) => {
@@ -177,103 +186,298 @@ export function extractVariables(templateStr: string): string[] {
 // ---------------------------------------------------------------------------
 
 /**
- * Processes {{#if}}, {{#unless}} conditional blocks.
+ * Processes {{#if}}, {{#unless}}, and {{#each}} blocks using a
+ * recursive descent parser that correctly handles nesting.
+ *
+ * This replaces the previous regex-based approach which failed on:
+ * 1. Nested if-else blocks (lazy regex grabbed wrong {{else}}/{{/if}})
+ * 2. Conditionals inside each loops (evaluated against wrong scope)
  */
 function processConditionals(template: string, variables: PromptVariables): string {
-  let result = template;
+  return processBlocks(template, variables);
+}
 
-  // Process {{#if variable}}...{{/if}} (supports nesting via iterative approach)
-  // We process from innermost to outermost to handle nesting
-  let changed = true;
-  let iterations = 0;
-  const maxIterations = 20; // Prevent infinite loops
+/**
+ * Recursive block processor. Finds the outermost block tags and
+ * processes them one at a time, recursing into their content.
+ */
+function processBlocks(template: string, variables: PromptVariables): string {
+  let result = "";
+  let pos = 0;
 
-  while (changed && iterations < maxIterations) {
-    changed = false;
-    iterations++;
+  while (pos < template.length) {
+    // Find the next block opening tag
+    const nextBlock = findNextBlockOpen(template, pos);
 
-    // {{#if variable}}content{{else}}altContent{{/if}} — must be processed BEFORE simple if
-    result = result.replace(
-      /\{\{#if\s+([^}]+)\}\}([\s\S]*?)\{\{else\}\}([\s\S]*?)\{\{\/if\}\}/g,
-      (_match, varName: string, ifContent: string, elseContent: string) => {
-        changed = true;
-        const value = resolveVariable(varName.trim(), variables);
-        return isTruthy(value) ? ifContent : elseContent;
+    if (nextBlock === null) {
+      // No more blocks — append the rest as-is
+      result += template.slice(pos);
+      break;
+    }
+
+    // Append text before the block
+    result += template.slice(pos, nextBlock.start);
+
+    // Find the matching close tag (respecting nesting)
+    const blockContent = extractBlock(template, nextBlock);
+
+    if (blockContent === null) {
+      // Malformed block — append the opening tag as-is and continue
+      result += template.slice(nextBlock.start, nextBlock.end);
+      pos = nextBlock.end;
+      continue;
+    }
+
+    // Process the block based on its type
+    const processed = evaluateBlock(blockContent, variables);
+    result += processed;
+    pos = blockContent.closeEnd;
+  }
+
+  return result;
+}
+
+interface BlockOpen {
+  type: "if" | "unless" | "each";
+  varName: string;
+  start: number; // start of {{#...}}
+  end: number; // end of {{#...}} (after }})
+}
+
+interface BlockContent {
+  type: "if" | "unless" | "each";
+  varName: string;
+  /** Content of the "if" branch (or the only branch for unless/each) */
+  mainContent: string;
+  /** Content of the "else" branch (only for if blocks) */
+  elseContent: string | null;
+  /** Position after the closing tag */
+  closeEnd: number;
+}
+
+/**
+ * Finds the next {{#if}}, {{#unless}}, or {{#each}} opening tag.
+ */
+function findNextBlockOpen(template: string, fromPos: number): BlockOpen | null {
+  const regex = /\{\{#(if|unless|each)\s+([^}]+)\}\}/g;
+  regex.lastIndex = fromPos;
+  const match = regex.exec(template);
+  if (!match) return null;
+
+  return {
+    type: match[1] as "if" | "unless" | "each",
+    varName: match[2].trim(),
+    start: match.index,
+    end: match.index + match[0].length,
+  };
+}
+
+/**
+ * Extracts a complete block (including nested blocks) by counting
+ * open/close tags to find the matching close tag.
+ *
+ * Also finds the {{else}} at the correct nesting level for if blocks.
+ */
+function extractBlock(template: string, open: BlockOpen): BlockContent | null {
+  const closeTag = `{{/${open.type}}}`;
+  const openPattern = new RegExp(`\\{\\{#${open.type}\\s+[^}]+\\}\\}`, "g");
+
+  let depth = 1;
+  let pos = open.end;
+  let elsePos: number | null = null;
+
+  while (pos < template.length && depth > 0) {
+    // Check for nested open of the same type
+    openPattern.lastIndex = pos;
+    const nextOpen = openPattern.exec(template);
+
+    // Check for close tag
+    const nextClose = template.indexOf(closeTag, pos);
+
+    // Check for {{else}} at current depth (only for if blocks)
+    let nextElse = -1;
+    if (open.type === "if" && depth === 1 && elsePos === null) {
+      nextElse = template.indexOf("{{else}}", pos);
+    }
+
+    if (nextClose === -1) {
+      // No matching close tag found — malformed
+      return null;
+    }
+
+    // Determine which comes first: nested open, else, or close
+    const nextOpenPos = nextOpen ? nextOpen.index : Infinity;
+
+    if (nextOpenPos < nextClose) {
+      // Nested open comes first — increase depth
+      depth++;
+      pos = nextOpenPos + nextOpen![0].length;
+    } else if (nextElse !== -1 && nextElse < nextClose && depth === 1) {
+      // {{else}} at our level comes before close
+      elsePos = nextElse;
+      pos = nextElse + "{{else}}".length;
+    } else {
+      // Close tag
+      depth--;
+      if (depth === 0) {
+        const mainContent =
+          elsePos !== null
+            ? template.slice(open.end, elsePos)
+            : template.slice(open.end, nextClose);
+        const elseContent =
+          elsePos !== null ? template.slice(elsePos + "{{else}}".length, nextClose) : null;
+
+        return {
+          type: open.type,
+          varName: open.varName,
+          mainContent,
+          elseContent,
+          closeEnd: nextClose + closeTag.length,
+        };
       }
-    );
+      pos = nextClose + closeTag.length;
+    }
+  }
 
-    // {{#if variable}}content{{/if}} — simple conditional (no else)
-    result = result.replace(
-      /\{\{#if\s+([^}]+)\}\}([\s\S]*?)\{\{\/if\}\}/g,
-      (_match, varName: string, content: string) => {
-        changed = true;
-        const value = resolveVariable(varName.trim(), variables);
-        if (isTruthy(value)) {
-          return content;
+  return null;
+}
+
+/**
+ * Evaluates a block based on its type and the current variables.
+ */
+function evaluateBlock(block: BlockContent, variables: PromptVariables): string {
+  switch (block.type) {
+    case "if": {
+      const value = resolveVariable(block.varName, variables);
+      const content = isTruthy(value) ? block.mainContent : (block.elseContent ?? "");
+      // Recurse into the chosen branch to handle nested blocks
+      return processBlocks(content, variables);
+    }
+    case "unless": {
+      const value = resolveVariable(block.varName, variables);
+      const content = !isTruthy(value) ? block.mainContent : (block.elseContent ?? "");
+      return processBlocks(content, variables);
+    }
+    case "each": {
+      return evaluateEachBlock(block, variables);
+    }
+  }
+}
+
+/**
+ * Evaluates an {{#each}} block, processing conditionals inside
+ * each iteration with the item's properties in scope.
+ */
+function evaluateEachBlock(block: BlockContent, variables: PromptVariables): string {
+  const value = resolveVariable(block.varName, variables);
+
+  if (!Array.isArray(value) || value.length === 0) {
+    return "";
+  }
+
+  return value
+    .map((item, index) => {
+      let rendered = block.mainContent;
+
+      // Replace loop metadata variables (these are unique to each and safe to replace globally)
+      rendered = rendered.replace(/\{\{@index\}\}/g, String(index));
+      rendered = rendered.replace(/\{\{@first\}\}/g, index === 0 ? "true" : "");
+      rendered = rendered.replace(/\{\{@last\}\}/g, index === value.length - 1 ? "true" : "");
+
+      // Replace {{this}} (the whole item) only at the current level.
+      // We must NOT replace {{this}} or {{this.x}} inside nested {{#each}} blocks
+      // because those refer to the inner loop's item.
+      rendered = replaceThisAtCurrentLevel(rendered, item);
+
+      // Process nested blocks ({{#if}}, {{#each}}) with item in scope.
+      // Create a merged scope: outer variables + "this" pointing to item.
+      const itemScope: PromptVariables = {
+        ...variables,
+        this: item as PromptVariables,
+      };
+      rendered = processBlocks(rendered, itemScope);
+
+      return rendered;
+    })
+    .join("");
+}
+
+/**
+ * Replaces {{this}} and {{this.property}} only at the current nesting level.
+ * Does NOT replace inside nested {{#each}} blocks (those have their own scope).
+ */
+function replaceThisAtCurrentLevel(template: string, item: unknown): string {
+  // Split the template into segments: outside nested each blocks vs inside them
+  let result = "";
+  let pos = 0;
+  const eachOpenRegex = /\{\{#each\s+[^}]+\}\}/g;
+
+  while (pos < template.length) {
+    // Find next nested {{#each}}
+    eachOpenRegex.lastIndex = pos;
+    const nextEach = eachOpenRegex.exec(template);
+
+    if (!nextEach) {
+      // No more nested each — process the rest at current level
+      result += replaceThisInSegment(template.slice(pos), item);
+      break;
+    }
+
+    // Process text before the nested each
+    result += replaceThisInSegment(template.slice(pos, nextEach.index), item);
+
+    // Find the matching {{/each}} for this nested block
+    const closeTag = "{{/each}}";
+    let depth = 1;
+    let searchPos = nextEach.index + nextEach[0].length;
+
+    while (depth > 0 && searchPos < template.length) {
+      const nextOpen = template.indexOf("{{#each", searchPos);
+      const nextClose = template.indexOf(closeTag, searchPos);
+
+      if (nextClose === -1) break; // malformed — bail
+
+      if (nextOpen !== -1 && nextOpen < nextClose) {
+        depth++;
+        searchPos = nextOpen + 7; // skip past "{{#each"
+      } else {
+        depth--;
+        if (depth === 0) {
+          // Include the entire nested each block as-is (will be processed later)
+          result += template.slice(nextEach.index, nextClose + closeTag.length);
+          pos = nextClose + closeTag.length;
+        } else {
+          searchPos = nextClose + closeTag.length;
         }
-        return "";
       }
-    );
+    }
 
-    // {{#unless variable}}content{{/unless}}
-    result = result.replace(
-      /\{\{#unless\s+([^}]+)\}\}([\s\S]*?)\{\{\/unless\}\}/g,
-      (_match, varName: string, content: string) => {
-        changed = true;
-        const value = resolveVariable(varName.trim(), variables);
-        if (!isTruthy(value)) {
-          return content;
-        }
-        return "";
-      }
-    );
+    if (depth > 0) {
+      // Malformed — include rest as-is
+      result += template.slice(nextEach.index);
+      pos = template.length;
+    }
   }
 
   return result;
 }
 
 /**
- * Processes {{#each variable}}...{{/each}} loops.
+ * Replaces {{this}} and {{this.property}} in a segment (no nested each blocks).
  */
-function processEachLoops(
-  template: string,
-  variables: PromptVariables,
-  usedVariables: string[]
-): string {
-  return template.replace(
-    /\{\{#each\s+([^}]+)\}\}([\s\S]*?)\{\{\/each\}\}/g,
-    (_match, varName: string, itemTemplate: string) => {
-      const trimmedVar = varName.trim();
-      const value = resolveVariable(trimmedVar, variables);
+function replaceThisInSegment(segment: string, item: unknown): string {
+  // Replace {{this}} with the whole item
+  let result = segment.replace(/\{\{this\}\}/g, formatValue(item));
 
-      if (!Array.isArray(value) || value.length === 0) {
-        return "";
-      }
+  // Replace {{this.property}} for object items
+  if (typeof item === "object" && item !== null) {
+    result = result.replace(/\{\{this\.([^}]+)\}\}/g, (_m, prop: string) => {
+      const propValue = (item as Record<string, unknown>)[prop.trim()];
+      return propValue !== undefined ? formatValue(propValue) : "";
+    });
+  }
 
-      usedVariables.push(trimmedVar);
-
-      return value
-        .map((item, index) => {
-          let rendered = itemTemplate;
-          // Replace {{this}} with the item itself
-          rendered = rendered.replace(/\{\{this\}\}/g, formatValue(item));
-          // Replace {{@index}} with the index
-          rendered = rendered.replace(/\{\{@index\}\}/g, String(index));
-          // Replace {{@first}} / {{@last}}
-          rendered = rendered.replace(/\{\{@first\}\}/g, index === 0 ? "true" : "");
-          rendered = rendered.replace(/\{\{@last\}\}/g, index === value.length - 1 ? "true" : "");
-          // Replace {{item.property}} for object items
-          if (typeof item === "object" && item !== null) {
-            rendered = rendered.replace(/\{\{this\.([^}]+)\}\}/g, (_m, prop: string) => {
-              const propValue = (item as Record<string, unknown>)[prop.trim()];
-              return propValue !== undefined ? formatValue(propValue) : "";
-            });
-          }
-          return rendered;
-        })
-        .join("");
-    }
-  );
+  return result;
 }
 
 /**
