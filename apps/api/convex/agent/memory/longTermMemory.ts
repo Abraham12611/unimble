@@ -168,6 +168,23 @@ export const archiveMemory = internalMutation({
 // ---------------------------------------------------------------------------
 
 /**
+ * Retrieves memories by their IDs (used after vectorSearch to get full docs).
+ */
+export const getMemoriesByIds = internalQuery({
+  args: {
+    memoryIds: v.array(v.id("memories")),
+  },
+  handler: async (ctx, args) => {
+    const results = [];
+    for (const id of args.memoryIds) {
+      const doc = await ctx.db.get(id);
+      if (doc) results.push(doc);
+    }
+    return results;
+  },
+});
+
+/**
  * Retrieves memories by scope and category (non-vector, index-based).
  */
 export const getMemoriesByScope = internalQuery({
@@ -287,6 +304,10 @@ export const createMemory = internalAction({
 /**
  * Searches memories using vector similarity.
  * Runs as an action to generate the query embedding.
+ *
+ * Note: Convex vectorSearch filter supports only a single q.eq() call.
+ * We filter by workspaceId at the index level (most selective), then
+ * fetch full documents and apply scope/category/status filters in code.
  */
 export const searchMemories = internalAction({
   args: {
@@ -302,36 +323,63 @@ export const searchMemories = internalAction({
     const { llmEmbed } = await import("../../lib/integrations/llm");
     const embedResult = await llmEmbed(args.query);
 
-    // Perform vector search with simple filter
-    // Convex vectorSearch filter uses q.eq() for each field
-    const results = await ctx.vectorSearch("memories", "by_embedding", {
+    // Perform vector search filtered by workspaceId.
+    // Convex vectorSearch returns only { _id, _score }.
+    // Request more results than needed to account for post-filtering.
+    const requestLimit = (args.limit ?? 10) * 3;
+    const vectorResults = await ctx.vectorSearch("memories", "by_embedding", {
       vector: embedResult.embedding,
-      limit: args.limit ?? 10,
+      limit: Math.min(requestLimit, 64),
       filter: (q) => q.eq("workspaceId", args.workspaceId),
     });
 
-    // Post-filter for additional criteria (scope, category, status)
-    const filtered = results.filter((r) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const doc = r as any;
-      if (doc.status !== "active") return false;
-      if (args.scope && doc.scope !== args.scope) return false;
-      if (args.scopeId && doc.scopeId !== args.scopeId) return false;
-      if (args.category && doc.category !== args.category) return false;
-      return true;
+    if (vectorResults.length === 0) {
+      return { results: [], embeddingCost: embedResult.cost };
+    }
+
+    // Fetch full documents to apply additional filters
+    const getMemoriesByIdsRef = makeFunctionReference<"query", { memoryIds: Id<"memories">[] }>(
+      "agent/memory/longTermMemory:getMemoriesByIds"
+    );
+
+    const fullDocs = await ctx.runQuery(getMemoriesByIdsRef, {
+      memoryIds: vectorResults.map((r) => r._id),
     });
 
+    // Build a score map from vector results
+    const scoreMap = new Map(vectorResults.map((r) => [r._id.toString(), r._score]));
+
+    // Apply post-filters on full documents
+    const filtered = fullDocs.filter(
+      (doc: {
+        status: string;
+        scope: string;
+        scopeId: string;
+        category: string;
+        _id: Id<"memories">;
+      }) => {
+        if (doc.status !== "active") return false;
+        if (args.scope && doc.scope !== args.scope) return false;
+        if (args.scopeId && doc.scopeId !== args.scopeId) return false;
+        if (args.category && doc.category !== args.category) return false;
+        return true;
+      }
+    );
+
+    // Limit to requested count
+    const limited = filtered.slice(0, args.limit ?? 10);
+
     // Record access for retrieved memories
-    if (filtered.length > 0) {
+    if (limited.length > 0) {
       await ctx.runMutation(recordMemoryAccessRef, {
-        memoryIds: filtered.map((r) => r._id),
+        memoryIds: limited.map((doc: { _id: Id<"memories"> }) => doc._id),
       });
     }
 
     return {
-      results: filtered.map((r) => ({
-        id: r._id,
-        score: r._score,
+      results: limited.map((doc: { _id: Id<"memories"> }) => ({
+        id: doc._id,
+        score: scoreMap.get(doc._id.toString()) ?? 0,
       })),
       embeddingCost: embedResult.cost,
     };

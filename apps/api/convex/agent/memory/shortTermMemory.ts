@@ -431,7 +431,9 @@ export function wouldExceedBudget(
   maxTokens: number,
   reservedForResponse = 2000
 ): boolean {
-  const currentTokens = new ShortTermMemory().getStatus().currentTokens;
+  const mem = new ShortTermMemory({ maxTokens, reservedForResponse });
+  mem.setMessages(currentMessages);
+  const currentTokens = mem.getStatus().currentTokens;
   const newTokens = estimateTokenCount(newContent);
   return currentTokens + newTokens > maxTokens - reservedForResponse;
 }
