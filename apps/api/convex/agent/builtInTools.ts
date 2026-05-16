@@ -148,8 +148,15 @@ export const BUILT_IN_TOOL_HANDLERS: Record<string, ToolEntry> = {
       if (!url) {
         return { success: false, error: "URL parameter is required", durationMs: 0 };
       }
+      const includePaths = params.includePatterns
+        ? String(params.includePatterns)
+            .split(",")
+            .map((s: string) => s.trim())
+            .filter(Boolean)
+        : undefined;
       const result = await firecrawlCrawl(url, {
         limit: params.maxPages ? Number(params.maxPages) : 10,
+        ...(includePaths ? { includePaths } : {}),
       });
       return {
         success: true,
@@ -223,20 +230,18 @@ export const BUILT_IN_TOOL_HANDLERS: Record<string, ToolEntry> = {
       },
     },
     handler: async (params) => {
-      // Memory write is a placeholder — full implementation in Phase 7.4
+      // Memory write is a placeholder — full implementation in Phase 7.4.
+      // Returns success: false so the agent knows the write was NOT persisted.
       const content = String(params.content ?? "");
       const category = String(params.category ?? "general");
       if (!content) {
         return { success: false, error: "Content parameter is required", durationMs: 0 };
       }
       return {
-        success: true,
-        data: {
-          stored: true,
-          content: content.slice(0, 100) + (content.length > 100 ? "..." : ""),
-          category,
-          note: "Memory persistence will be fully implemented in Phase 7.4.",
-        },
+        success: false,
+        error:
+          "Memory persistence is not yet implemented (Phase 7.4). " +
+          `The following was NOT saved: [${category}] ${content.slice(0, 80)}...`,
         durationMs: 0,
       };
     },
@@ -313,22 +318,19 @@ export const BUILT_IN_TOOL_HANDLERS: Record<string, ToolEntry> = {
     },
     handler: async (params) => {
       // Notification sending is a placeholder — requires Convex mutation
-      // which can't be called from a pure tool handler. In production,
-      // this will schedule a mutation via the workflow engine.
+      // which can't be called from a pure tool handler. Returns success: false
+      // so the agent knows the notification was NOT delivered.
       const title = String(params.title ?? "");
       const message = String(params.message ?? "");
       if (!title || !message) {
         return { success: false, error: "Title and message are required", durationMs: 0 };
       }
       return {
-        success: true,
-        data: {
-          sent: true,
-          title,
-          message,
-          type: params.type ?? "info",
-          note: "Notification queued for delivery.",
-        },
+        success: false,
+        error:
+          "Notification delivery is not yet implemented in the tool handler. " +
+          "Notifications require a Convex mutation and will be wired in Phase 8. " +
+          `Intended notification: [${params.type ?? "info"}] ${title}: ${message}`,
         durationMs: 0,
       };
     },
@@ -419,12 +421,22 @@ async function executeComposioAction(
     const client = getComposioClient();
 
     // Execute the action using the Composio SDK.
-    // The Composio SDK API varies by version — use the underlying
-    // HTTP client for reliable action execution.
+    // The SDK exposes action execution via the underlying API client.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const innerClient = (client as any).getClient?.() ?? client;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result = await (innerClient as any).actions.execute(actionId, {
+    const actionsApi = (innerClient as any).actions;
+    if (!actionsApi || typeof actionsApi.execute !== "function") {
+      return {
+        success: false,
+        error:
+          "Composio SDK version incompatible: actions.execute not found. " +
+          "Please update @composio/core to a compatible version.",
+        durationMs: 0,
+      };
+    }
+
+    const result = await actionsApi.execute(actionId, {
       entityId: context.workspaceId,
       params: actionParams,
     });

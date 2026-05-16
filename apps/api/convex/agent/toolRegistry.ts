@@ -317,13 +317,30 @@ export class ToolRegistry {
 
   private isRetryable(error?: string): boolean {
     if (!error) return false;
-    const retryablePatterns = ["timeout", "rate limit", "429", "5xx", "ECONNRESET", "ETIMEDOUT"];
+    const retryablePatterns = [
+      "timeout",
+      "rate limit",
+      "429",
+      "500",
+      "502",
+      "503",
+      "504",
+      "ECONNRESET",
+      "ETIMEDOUT",
+    ];
     const lower = error.toLowerCase();
     return retryablePatterns.some((p) => lower.includes(p.toLowerCase()));
   }
 
   private buildCacheKey(toolId: string, params: Record<string, unknown>): string {
-    return `${toolId}:${JSON.stringify(params)}`;
+    // Sort keys for order-independent cache hits
+    const sorted = Object.keys(params)
+      .sort()
+      .reduce<Record<string, unknown>>((acc, k) => {
+        acc[k] = params[k];
+        return acc;
+      }, {});
+    return `${toolId}:${JSON.stringify(sorted)}`;
   }
 }
 
@@ -337,11 +354,17 @@ let _registryInitPromise: Promise<void> | null = null;
 /**
  * Returns the global tool registry singleton.
  * Lazily initializes with built-in tools on first access.
+ * If initialization fails, resets state so the next call retries.
  */
 export async function getToolRegistry(): Promise<ToolRegistry> {
   if (!_registry) {
     _registry = new ToolRegistry();
-    _registryInitPromise = registerBuiltInTools(_registry);
+    _registryInitPromise = registerBuiltInTools(_registry).catch((err) => {
+      // Reset so the next caller retries initialization
+      _registry = null;
+      _registryInitPromise = null;
+      throw err;
+    });
   }
   if (_registryInitPromise) {
     await _registryInitPromise;
