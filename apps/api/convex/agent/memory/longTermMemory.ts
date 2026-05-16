@@ -186,6 +186,9 @@ export const getMemoriesByIds = internalQuery({
 
 /**
  * Retrieves memories by scope and category (non-vector, index-based).
+ *
+ * When category is specified, uses the by_workspace_and_category index
+ * for efficient filtering. Otherwise uses by_scope_and_id.
  */
 export const getMemoriesByScope = internalQuery({
   args: {
@@ -196,19 +199,37 @@ export const getMemoriesByScope = internalQuery({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const query = ctx.db
+    const limit = args.limit ?? 20;
+
+    // If category is specified, use the category index for accurate results
+    if (args.category) {
+      const results = await ctx.db
+        .query("memories")
+        .withIndex("by_workspace_and_category", (q) =>
+          q.eq("workspaceId", args.workspaceId).eq("category", args.category!)
+        )
+        .filter((q) =>
+          q.and(
+            q.eq(q.field("scope"), args.scope),
+            q.eq(q.field("scopeId"), args.scopeId),
+            q.eq(q.field("status"), "active")
+          )
+        )
+        .order("desc")
+        .take(limit);
+      return results;
+    }
+
+    // No category filter — use scope index
+    const results = await ctx.db
       .query("memories")
       .withIndex("by_scope_and_id", (q) => q.eq("scope", args.scope).eq("scopeId", args.scopeId))
       .filter((q) =>
         q.and(q.eq(q.field("workspaceId"), args.workspaceId), q.eq(q.field("status"), "active"))
-      );
+      )
+      .order("desc")
+      .take(limit);
 
-    const results = await query.order("desc").take(args.limit ?? 20);
-
-    // Apply category filter if specified
-    if (args.category) {
-      return results.filter((m) => m.category === args.category);
-    }
     return results;
   },
 });
@@ -376,11 +397,37 @@ export const searchMemories = internalAction({
       });
     }
 
+    // Return full document data matching MemorySearchResult interface
     return {
-      results: limited.map((doc: { _id: Id<"memories"> }) => ({
-        id: doc._id,
-        score: scoreMap.get(doc._id.toString()) ?? 0,
-      })),
+      results: limited.map(
+        (doc: {
+          _id: Id<"memories">;
+          scope: string;
+          scopeId: string;
+          category: string;
+          content: string;
+          importance: number;
+          createdAt: number;
+          accessCount: number;
+          lastAccessedAt?: number;
+          metadata?: unknown;
+          embedding?: number[];
+        }) => ({
+          memory: {
+            id: doc._id as string,
+            scope: doc.scope,
+            scopeId: doc.scopeId,
+            category: doc.category,
+            content: doc.content,
+            importance: doc.importance,
+            createdAt: doc.createdAt,
+            accessCount: doc.accessCount,
+            lastAccessedAt: doc.lastAccessedAt,
+            metadata: doc.metadata as Record<string, unknown> | undefined,
+          },
+          score: scoreMap.get(doc._id.toString()) ?? 0,
+        })
+      ),
       embeddingCost: embedResult.cost,
     };
   },
