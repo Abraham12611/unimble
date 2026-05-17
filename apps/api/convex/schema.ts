@@ -315,6 +315,47 @@ export default defineSchema({
     .index("by_status", ["status"])
     .index("by_workspace_and_status", ["workspaceId", "status"]),
 
+  // Agent Memories — long-term memory with vector search (Phase 7.4)
+  memories: defineTable({
+    workspaceId: v.id("workspaces"),
+    operatorId: v.optional(v.id("operators")),
+    /** Memory scope: workspace, operator, agent, execution */
+    scope: v.string(),
+    /** Scope-specific ID (operator ID, agent ID, etc.) */
+    scopeId: v.string(),
+    /** Category for filtering (preference, fact, pattern, content, feedback) */
+    category: v.string(),
+    /** The memory content text */
+    content: v.string(),
+    /** Embedding vector for semantic search */
+    embedding: v.optional(v.array(v.float64())),
+    /** Importance score 0-1 */
+    importance: v.number(),
+    /** Source of this memory (agent, user, system) */
+    source: v.string(),
+    /** Optional metadata */
+    metadata: v.optional(v.any()),
+    /** Number of times this memory has been accessed */
+    accessCount: v.number(),
+    /** Last time this memory was accessed */
+    lastAccessedAt: v.optional(v.number()),
+    /** Whether this memory is active or archived */
+    status: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_workspace", ["workspaceId"])
+    .index("by_workspace_and_scope", ["workspaceId", "scope"])
+    .index("by_workspace_and_category", ["workspaceId", "category"])
+    .index("by_scope_and_id", ["scope", "scopeId"])
+    .index("by_status", ["status"])
+    .index("by_workspace_and_status", ["workspaceId", "status"])
+    .vectorIndex("by_embedding", {
+      vectorField: "embedding",
+      dimensions: 1536,
+      filterFields: ["workspaceId", "scope", "scopeId", "category", "status"],
+    }),
+
   // Circuit Breakers — per-integration failure tracking
   circuitBreakers: defineTable({
     workspaceId: v.id("workspaces"),
