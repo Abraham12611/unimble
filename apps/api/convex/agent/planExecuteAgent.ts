@@ -97,6 +97,14 @@ export class PlanExecuteAgent extends AgentBase {
       return this.state;
     }
 
+    // Restore plan from previousState if available (re-entry support)
+    if (context.previousState && !this.plan) {
+      const savedPlan = (context.previousState as unknown as { _plan?: ExecutionPlan })._plan;
+      if (savedPlan) {
+        this.plan = savedPlan;
+      }
+    }
+
     // Build initial messages if needed
     if (this.state.messages.length === 0) {
       this.state.messages = this.buildPlanningMessages(context);
@@ -211,6 +219,12 @@ export class PlanExecuteAgent extends AgentBase {
     }
 
     this.state.totalDurationMs = Date.now() - startTime;
+
+    // Persist plan into state for re-entry support
+    if (this.plan) {
+      (this.state as unknown as { _plan: ExecutionPlan })._plan = this.plan;
+    }
+
     return this.state;
   }
 
@@ -404,12 +418,27 @@ If you cannot complete this step, explain why.`,
 
       // Execute tool calls
       if (response.toolCalls && response.toolCalls.length > 0) {
+        let stepFailed = false;
+        let failError = "";
+
         for (let j = 0; j < response.toolCalls.length; j++) {
           const tc = response.toolCalls[j];
+          const toolCallId = tc.id ?? `call_step_${planStep.index}_${i}_${j}`;
+
+          if (stepFailed) {
+            // Push synthetic error for skipped calls (maintains OpenAI API contract)
+            this.state.messages.push({
+              role: "tool",
+              content: `Skipped: previous tool call in this batch failed.`,
+              toolCallId,
+              toolName: tc.name,
+              timestamp: Date.now(),
+            });
+            continue;
+          }
+
           const result = await toolExecutor(tc.name, tc.arguments);
           totalCost += result.cost ?? 0;
-
-          const toolCallId = tc.id ?? `call_step_${planStep.index}_${i}_${j}`;
 
           this.state.messages.push({
             role: "tool",
@@ -423,17 +452,23 @@ If you cannot complete this step, explain why.`,
             timestamp: Date.now(),
           });
 
-          // If tool failed, the step might need revision
+          // If tool failed, mark but continue to push results for remaining calls
           if (!result.success) {
-            return {
-              completed: false,
-              failed: true,
-              output: "",
-              error: result.error ?? "Tool execution failed",
-              cost: totalCost,
-              needsRevision: true,
-            };
+            stepFailed = true;
+            failError = result.error ?? "Tool execution failed";
           }
+        }
+
+        // If any tool in the batch failed, return failure
+        if (stepFailed) {
+          return {
+            completed: false,
+            failed: true,
+            output: "",
+            error: failError,
+            cost: totalCost,
+            needsRevision: true,
+          };
         }
       } else if (!response.toolCalls || response.toolCalls.length === 0) {
         // No tool calls and no final answer — treat content as the output
@@ -447,13 +482,16 @@ If you cannot complete this step, explain why.`,
       }
     }
 
-    // Exhausted mini-loop iterations
+    // Exhausted mini-loop iterations — treat as incomplete so the outer
+    // loop can trigger a plan revision rather than silently accepting a
+    // placeholder as the step output.
     return {
-      completed: true,
-      failed: false,
-      output: "Step completed (max iterations for this step reached)",
+      completed: false,
+      failed: true,
+      output: "",
+      error: "Step did not produce a result within the allowed iterations",
       cost: totalCost,
-      needsRevision: false,
+      needsRevision: true,
     };
   }
 

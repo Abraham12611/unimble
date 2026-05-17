@@ -320,8 +320,8 @@ export const COMMON_ERROR_PATTERNS: ErrorPattern[] = [
   {
     id: "incomplete_sentence",
     name: "Incomplete Sentence",
-    detector: /[^.!?\n]\s*$/,
-    severity: "medium",
+    detector: /[a-zA-Z]{4,}\s*$/m,
+    severity: "low",
     fixHint: "Complete the trailing sentence",
   },
   {
@@ -348,7 +348,7 @@ export const COMMON_ERROR_PATTERNS: ErrorPattern[] = [
   {
     id: "empty_section",
     name: "Empty Section",
-    detector: /##\s+[^\n]+\n\s*\n(?=##|\z)/,
+    detector: /##\s+[^\n]+\n\s*\n(?=##|$)/m,
     severity: "low",
     fixHint: "Fill in empty sections or remove them",
   },
