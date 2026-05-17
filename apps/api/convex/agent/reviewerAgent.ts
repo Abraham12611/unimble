@@ -81,8 +81,8 @@ export interface ReviewInput {
 export interface ReviewResult {
   /** Structured review response (for communication protocol) */
   response: ReviewResponsePayload;
-  /** Detailed evaluations per review type */
-  evaluations: Record<ReviewType, QualityEvaluation>;
+  /** Detailed evaluations per review type (only types that were run) */
+  evaluations: Partial<Record<ReviewType, QualityEvaluation>>;
   /** Total cost of the review */
   cost: number;
   /** Duration in ms */
@@ -275,10 +275,19 @@ export class ReviewerAgent extends AgentBase {
       evaluations[reviewType] = evaluation;
       allScores[reviewType] = evaluation.overallScore;
 
-      // Convert evaluation issues to ReviewIssues
+      // Convert evaluation free-text issues to ReviewIssues.
+      // Free-text issues don't have individual scores, so we assign severity
+      // based on whether the review type overall passed or not. If the type
+      // scored below the approve threshold, these are "should_fix"; if below
+      // reject threshold, "must_fix"; otherwise "consider".
+      const typeSeverity = this.issueSeverityForFreeText(
+        evaluation.overallScore,
+        this.reviewerConfig.approveThreshold ?? this.getDefaultApproveThreshold(),
+        this.reviewerConfig.rejectThreshold ?? this.getDefaultRejectThreshold()
+      );
       for (const issue of evaluation.issues) {
         allIssues.push({
-          severity: this.issueSeverityFromScore(evaluation.overallScore),
+          severity: typeSeverity,
           category: reviewType,
           description: issue,
         });
@@ -324,7 +333,7 @@ export class ReviewerAgent extends AgentBase {
 
     return {
       response,
-      evaluations: evaluations as Record<ReviewType, QualityEvaluation>,
+      evaluations,
       cost: totalCost,
       durationMs: Date.now() - startTime,
     };
@@ -509,11 +518,19 @@ export class ReviewerAgent extends AgentBase {
   }
 
   /**
-   * Maps a score to an issue severity.
+   * Maps a review type's overall score to a severity for free-text issues.
+   * Uses the configured thresholds to determine severity:
+   * - Below reject threshold → must_fix
+   * - Below approve threshold → should_fix
+   * - At or above approve threshold → consider
    */
-  private issueSeverityFromScore(score: number): ReviewIssue["severity"] {
-    if (score < 4) return "must_fix";
-    if (score < 7) return "should_fix";
+  private issueSeverityForFreeText(
+    score: number,
+    approveThreshold: number,
+    rejectThreshold: number
+  ): ReviewIssue["severity"] {
+    if (score < rejectThreshold) return "must_fix";
+    if (score < approveThreshold) return "should_fix";
     return "consider";
   }
 

@@ -864,5 +864,111 @@ describe("Lead Agent", () => {
       expect(state.status).toBe("complete");
       expect(subAgentExecutor).toHaveBeenCalled();
     });
+
+    it("should escalate on timeout when autoEscalateOnTimeout is true", async () => {
+      const llmCall = createMockLLMCall([
+        JSON.stringify([{ agentId: "writer_agent", task: "Write slowly" }]),
+      ]);
+
+      // Sub-agent that takes longer than the timeout
+      const subAgentExecutor = vi.fn(
+        async (): Promise<SubAgentResult> =>
+          new Promise((resolve) =>
+            setTimeout(
+              () => resolve({ success: true, output: "late", cost: 0, durationMs: 200 }),
+              200
+            )
+          )
+      );
+
+      const lead = createLeadAgent("lead_timeout", mockSubAgents, {
+        delegationTimeoutMs: 50, // 50ms timeout — sub-agent takes 200ms
+        autoEscalateOnTimeout: true,
+      });
+      const context = createMockContext("Write something");
+
+      const result = await lead.orchestrate(
+        context,
+        llmCall,
+        createMockToolExecutor(),
+        subAgentExecutor
+      );
+
+      expect(result.escalated).toBe(true);
+      expect(result.escalationReason).toContain("timed out");
+      expect(result.delegations[0].status).toBe("timed_out");
+    });
+
+    it("should continue without result on timeout when autoEscalateOnTimeout is false", async () => {
+      const llmCall = createMockLLMCall([
+        JSON.stringify([{ agentId: "writer_agent", task: "Write slowly" }]),
+      ]);
+
+      const subAgentExecutor = vi.fn(
+        async (): Promise<SubAgentResult> =>
+          new Promise((resolve) =>
+            setTimeout(
+              () => resolve({ success: true, output: "late", cost: 0, durationMs: 200 }),
+              200
+            )
+          )
+      );
+
+      const lead = createLeadAgent("lead_timeout_no_esc", mockSubAgents, {
+        delegationTimeoutMs: 50,
+        autoEscalateOnTimeout: false,
+      });
+      const context = createMockContext("Write something");
+
+      const result = await lead.orchestrate(
+        context,
+        llmCall,
+        createMockToolExecutor(),
+        subAgentExecutor
+      );
+
+      // Should NOT escalate — just skip the timed-out delegation
+      expect(result.escalated).toBe(false);
+      expect(result.delegations[0].status).toBe("timed_out");
+    });
+
+    it("should execute independent delegations in parallel", async () => {
+      const callOrder: string[] = [];
+      const llmCall = createMockLLMCall([
+        // Plan with 2 independent tasks (no dependencies)
+        JSON.stringify([
+          { agentId: "research_agent", task: "Research" },
+          { agentId: "writer_agent", task: "Write" },
+        ]),
+        // Aggregation
+        "Combined result",
+      ]);
+
+      const subAgentExecutor = vi.fn(async (agentId: string): Promise<SubAgentResult> => {
+        callOrder.push(`start:${agentId}`);
+        // Simulate async work
+        await new Promise((r) => setTimeout(r, 10));
+        callOrder.push(`end:${agentId}`);
+        return { success: true, output: `${agentId} done`, cost: 0.01, durationMs: 10 };
+      });
+
+      const lead = createLeadAgent("lead_parallel", mockSubAgents, {
+        maxParallelDelegations: 5,
+      });
+      const context = createMockContext("Do two things");
+
+      const result = await lead.orchestrate(
+        context,
+        llmCall,
+        createMockToolExecutor(),
+        subAgentExecutor
+      );
+
+      expect(result.delegations).toHaveLength(2);
+      expect(result.delegations.every((d) => d.status === "completed")).toBe(true);
+      // Both should start before either ends (parallel execution)
+      expect(callOrder[0]).toBe("start:research_agent");
+      expect(callOrder[1]).toBe("start:writer_agent");
+    });
   });
 });

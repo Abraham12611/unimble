@@ -60,12 +60,10 @@ export interface LeadAgentConfig {
   subAgents: SubAgentRegistration[];
   /** Maximum number of parallel delegations */
   maxParallelDelegations?: number;
-  /** Timeout for sub-agent responses (ms) */
+  /** Timeout for sub-agent responses (ms). 0 or undefined = no timeout. */
   delegationTimeoutMs?: number;
-  /** Whether to auto-escalate on timeout */
+  /** Whether to escalate to human when a sub-agent times out (default: true) */
   autoEscalateOnTimeout?: boolean;
-  /** Maximum review rounds before escalating */
-  maxReviewRounds?: number;
 }
 
 /** State of a delegated task. */
@@ -138,7 +136,7 @@ export class LeadAgent extends PlanExecuteAgent {
    *
    * This is the primary entry point for the Lead Agent. It:
    * 1. Plans the delegation strategy
-   * 2. Delegates to sub-agents
+   * 2. Delegates to sub-agents (parallel where possible)
    * 3. Processes results
    * 4. Returns the aggregated output
    */
@@ -159,22 +157,54 @@ export class LeadAgent extends PlanExecuteAgent {
       const plan = await this.createDelegationPlan(context, llmCall);
       totalCost += plan.cost;
 
-      // 2. Execute delegations
-      for (const delegation of plan.delegations) {
-        const result = await this.executeDelegation(
-          delegation,
-          context,
-          llmCall,
-          toolExecutor,
-          subAgentExecutor
-        );
-        totalCost += result.cost;
+      // 2. Execute delegations in batches (respecting dependencies and parallelism)
+      const maxParallel = this.leadConfig.maxParallelDelegations ?? 3;
+      const completed = new Set<string>();
+      const remaining = [...plan.delegations];
 
-        if (result.escalated) {
+      while (remaining.length > 0) {
+        // Find delegations whose dependencies are satisfied
+        const ready = remaining.filter((d) => {
+          if (!d.dependsOn || d.dependsOn.length === 0) return true;
+          return d.dependsOn.every((dep) => completed.has(dep));
+        });
+
+        if (ready.length === 0 && remaining.length > 0) {
+          // Circular dependency or unresolvable — escalate
           escalated = true;
-          escalationReason = result.escalationReason;
+          escalationReason = `Unresolvable dependencies in delegation plan: ${remaining.map((d) => d.agentId).join(", ")}`;
           break;
         }
+
+        // Take up to maxParallel from the ready set
+        const batch = ready.slice(0, maxParallel);
+
+        // Execute batch in parallel with timeout enforcement
+        const batchResults = await Promise.all(
+          batch.map((delegation) =>
+            this.executeDelegationWithTimeout(delegation, context, subAgentExecutor)
+          )
+        );
+
+        // Process batch results
+        for (let i = 0; i < batchResults.length; i++) {
+          const result = batchResults[i];
+          totalCost += result.cost;
+
+          if (result.escalated) {
+            escalated = true;
+            escalationReason = result.escalationReason;
+            break;
+          }
+
+          // Mark as completed for dependency resolution
+          completed.add(batch[i].agentId);
+          // Remove from remaining
+          const idx = remaining.indexOf(batch[i]);
+          if (idx !== -1) remaining.splice(idx, 1);
+        }
+
+        if (escalated) break;
       }
 
       // 3. Aggregate results
@@ -387,13 +417,14 @@ Rules:
   // ---------------------------------------------------------------------------
 
   /**
-   * Executes a single delegation: sends task to sub-agent and processes result.
+   * Executes a single delegation with timeout enforcement.
+   * If delegationTimeoutMs is configured, the sub-agent call is raced
+   * against a timeout. On timeout, the delegation is marked as timed_out
+   * and escalation is triggered (if autoEscalateOnTimeout is true).
    */
-  private async executeDelegation(
+  private async executeDelegationWithTimeout(
     delegation: { agentId: string; task: string; dependsOn?: string[] },
     context: AgentContext,
-    llmCall: LLMCallFn,
-    toolExecutor: ToolExecutorFn,
     subAgentExecutor: SubAgentExecutorFn
   ): Promise<{ cost: number; escalated: boolean; escalationReason?: string }> {
     let cost = 0;
@@ -424,9 +455,23 @@ Rules:
     };
     this.delegations.push(delegationState);
 
-    // Execute the sub-agent
+    // Execute the sub-agent with timeout enforcement
     try {
-      const result = await subAgentExecutor(delegation.agentId, delegation.task, context);
+      const timeoutMs = this.leadConfig.delegationTimeoutMs;
+      let result: SubAgentResult;
+
+      if (timeoutMs && timeoutMs > 0) {
+        // Race the sub-agent against a timeout
+        result = await Promise.race([
+          subAgentExecutor(delegation.agentId, delegation.task, context),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("DELEGATION_TIMEOUT")), timeoutMs)
+          ),
+        ]);
+      } else {
+        result = await subAgentExecutor(delegation.agentId, delegation.task, context);
+      }
+
       cost += result.cost;
 
       if (result.success) {
@@ -451,27 +496,43 @@ Rules:
           { inReplyTo: message.id }
         );
       } else {
+        // Sub-agent returned failure — always escalate
         delegationState.status = "failed";
         delegationState.error = result.error;
 
-        // Check if we should escalate
+        return {
+          cost,
+          escalated: true,
+          escalationReason: `Sub-agent ${delegation.agentId} failed: ${result.error}`,
+        };
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+
+      if (errorMsg === "DELEGATION_TIMEOUT") {
+        // Timeout — mark as timed_out
+        delegationState.status = "timed_out";
+        delegationState.error = `Timed out after ${this.leadConfig.delegationTimeoutMs}ms`;
+
         if (this.leadConfig.autoEscalateOnTimeout) {
           return {
             cost,
             escalated: true,
-            escalationReason: `Sub-agent ${delegation.agentId} failed: ${result.error}`,
+            escalationReason: `Sub-agent ${delegation.agentId} timed out after ${this.leadConfig.delegationTimeoutMs}ms`,
           };
         }
-      }
-    } catch (error) {
-      delegationState.status = "failed";
-      delegationState.error = error instanceof Error ? error.message : String(error);
+        // If autoEscalateOnTimeout is false, continue without this result
+      } else {
+        // Unexpected error — always escalate
+        delegationState.status = "failed";
+        delegationState.error = errorMsg;
 
-      return {
-        cost,
-        escalated: true,
-        escalationReason: `Sub-agent ${delegation.agentId} threw an error: ${delegationState.error}`,
-      };
+        return {
+          cost,
+          escalated: true,
+          escalationReason: `Sub-agent ${delegation.agentId} threw an error: ${errorMsg}`,
+        };
+      }
     }
 
     return { cost, escalated: false };
@@ -569,7 +630,6 @@ export function createLeadAgent(
     maxParallelDelegations?: number;
     delegationTimeoutMs?: number;
     autoEscalateOnTimeout?: boolean;
-    maxReviewRounds?: number;
   }
 ): LeadAgent {
   const agentConfig: AgentConfig = {
@@ -601,7 +661,6 @@ Be concise, clear, and action-oriented in your planning.`,
     maxParallelDelegations: options?.maxParallelDelegations ?? 3,
     delegationTimeoutMs: options?.delegationTimeoutMs ?? 120_000,
     autoEscalateOnTimeout: options?.autoEscalateOnTimeout ?? true,
-    maxReviewRounds: options?.maxReviewRounds ?? 3,
   };
 
   return new LeadAgent(agentConfig, leadConfig);
