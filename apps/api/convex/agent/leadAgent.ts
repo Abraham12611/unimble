@@ -394,14 +394,17 @@ Rules:
 
     // Validate agent IDs
     const validIds = new Set(availableAgents.map((a) => a.id));
-    return jsonArray
-      .filter(
-        (d: { agentId?: string; task?: string }) => d.agentId && d.task && validIds.has(d.agentId)
-      )
-      .map((d: { agentId: string; task: string; dependsOn?: string[] }) => ({
-        agentId: d.agentId,
-        task: d.task,
-        dependsOn: d.dependsOn,
+    const items = jsonArray as Array<Record<string, unknown>>;
+    return items
+      .filter((d) => {
+        const agentId = d.agentId as string | undefined;
+        const task = d.task as string | undefined;
+        return agentId && task && validIds.has(agentId);
+      })
+      .map((d) => ({
+        agentId: d.agentId as string,
+        task: d.task as string,
+        dependsOn: d.dependsOn as string[] | undefined,
       }));
   }
 

@@ -400,7 +400,11 @@ export class AgentLogger {
     }
 
     // External sink
-    this.config.sink(entry);
+    try {
+      this.config.sink(entry);
+    } catch {
+      // Silently swallow sink errors — logging must never crash agent execution
+    }
   }
 
   private consoleLog(entry: AgentLogEntry): void {
