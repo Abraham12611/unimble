@@ -167,7 +167,11 @@ export class PlanExecuteAgent extends AgentBase {
           this.state.totalCost += response.cost;
 
           // Check if plan needs revision after this step
-          if (this.plan.currentStepIndex < this.plan.steps.length && response.needsRevision) {
+          if (
+            this.plan.currentStepIndex < this.plan.steps.length &&
+            response.needsRevision &&
+            this.plan.revisionCount < this.maxRevisions
+          ) {
             await this.revisePlan(llmCall, context);
           }
         } else if (response.failed) {
@@ -558,8 +562,10 @@ If you cannot complete this step, explain why.`,
    * Parses plan steps from LLM response (expects JSON array of strings).
    */
   private parsePlanSteps(content: string): PlanStep[] {
-    // Try to extract JSON array from the response
-    const jsonMatch = content.match(/\[[\s\S]*?\]/);
+    // Try to extract JSON array from the response.
+    // Use a greedy match so nested brackets inside string values don't
+    // truncate the outer array (JSON.parse will reject non-array matches).
+    const jsonMatch = content.match(/\[[\s\S]*\]/);
     if (jsonMatch) {
       try {
         const parsed = JSON.parse(jsonMatch[0]);
