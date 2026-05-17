@@ -338,6 +338,7 @@ export const searchMemories = internalAction({
     scopeId: v.optional(v.string()),
     category: v.optional(v.string()),
     limit: v.optional(v.number()),
+    minScore: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     // Generate embedding for the search query
@@ -371,6 +372,7 @@ export const searchMemories = internalAction({
     const scoreMap = new Map(vectorResults.map((r) => [r._id.toString(), r._score]));
 
     // Apply post-filters on full documents
+    const minScore = args.minScore ?? 0;
     const filtered = fullDocs.filter(
       (doc: {
         status: string;
@@ -383,6 +385,9 @@ export const searchMemories = internalAction({
         if (args.scope && doc.scope !== args.scope) return false;
         if (args.scopeId && doc.scopeId !== args.scopeId) return false;
         if (args.category && doc.category !== args.category) return false;
+        // Apply minimum similarity score threshold
+        const score = scoreMap.get(doc._id.toString()) ?? 0;
+        if (score < minScore) return false;
         return true;
       }
     );
