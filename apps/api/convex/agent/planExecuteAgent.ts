@@ -471,11 +471,35 @@ If you cannot complete this step, explain why.`,
           };
         }
       } else if (!response.toolCalls || response.toolCalls.length === 0) {
-        // No tool calls and no final answer — treat content as the output
+        // No tool calls and no final answer — check if this is a genuine
+        // response or a refusal/meta-commentary that should trigger revision.
+        const content = response.content.trim();
+        const refusalPatterns = [
+          /(?:as an ai|i cannot|i don't have access|i'm unable to|i can't)/i,
+          /(?:i do not have|i am not able|i lack the ability)/i,
+          /(?:sorry,? (?:but )?i|unfortunately,? i)/i,
+        ];
+        const isRefusal = refusalPatterns.some((p) => p.test(content));
+
+        if (isRefusal || content.length < 10) {
+          // Refusal or empty response — treat as failure to trigger revision
+          return {
+            completed: false,
+            failed: true,
+            output: "",
+            error: isRefusal
+              ? `LLM refused to execute step: ${content.slice(0, 100)}`
+              : "LLM returned empty or minimal response without using tools",
+            cost: totalCost,
+            needsRevision: true,
+          };
+        }
+
+        // Genuine prose response (e.g., the LLM answered directly without tools)
         return {
           completed: true,
           failed: false,
-          output: response.content,
+          output: content,
           cost: totalCost,
           needsRevision: false,
         };
