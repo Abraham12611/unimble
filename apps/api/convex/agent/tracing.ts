@@ -388,6 +388,11 @@ export class AgentTracer {
 
   /**
    * Sends a batch of runs to the LangSmith API.
+   *
+   * Uses a single request with both `post` (creates) and `patch` (updates)
+   * in one body. This ensures LangSmith processes creates before patches
+   * atomically, avoiding the race condition where a PATCH arrives before
+   * its corresponding POST.
    */
   private async sendBatch(runs: TraceRun[]): Promise<void> {
     if (runs.length === 0) return;
@@ -396,24 +401,7 @@ export class AgentTracer {
     const creates = runs.filter((r) => !r.endTime);
     const updates = runs.filter((r) => r.endTime);
 
-    const promises: Promise<void>[] = [];
-
-    if (creates.length > 0) {
-      promises.push(this.postRuns(creates));
-    }
-
-    if (updates.length > 0) {
-      promises.push(this.patchRuns(updates));
-    }
-
-    await Promise.allSettled(promises);
-  }
-
-  /**
-   * POST new runs to LangSmith.
-   */
-  private async postRuns(runs: TraceRun[]): Promise<void> {
-    const payload = runs.map((run) => ({
+    const postPayload = creates.map((run) => ({
       id: run.id,
       name: run.name,
       run_type: run.runType,
@@ -425,25 +413,7 @@ export class AgentTracer {
       session_name: this.config.project,
     }));
 
-    try {
-      await fetch(`${this.config.endpoint}/runs/batch`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": this.config.apiKey,
-        },
-        body: JSON.stringify({ post: payload }),
-      });
-    } catch {
-      // Silently fail — tracing should never break agent execution
-    }
-  }
-
-  /**
-   * PATCH existing runs with completion data.
-   */
-  private async patchRuns(runs: TraceRun[]): Promise<void> {
-    const payload = runs.map((run) => ({
+    const patchPayload = updates.map((run) => ({
       id: run.id,
       end_time: run.endTime,
       outputs: run.outputs,
@@ -451,6 +421,11 @@ export class AgentTracer {
       extra: run.extra,
     }));
 
+    // Send as a single atomic request — LangSmith processes post[] before patch[]
+    const body: Record<string, unknown> = {};
+    if (postPayload.length > 0) body.post = postPayload;
+    if (patchPayload.length > 0) body.patch = patchPayload;
+
     try {
       await fetch(`${this.config.endpoint}/runs/batch`, {
         method: "POST",
@@ -458,10 +433,16 @@ export class AgentTracer {
           "Content-Type": "application/json",
           "x-api-key": this.config.apiKey,
         },
-        body: JSON.stringify({ patch: payload }),
+        body: JSON.stringify(body),
       });
     } catch {
       // Silently fail — tracing should never break agent execution
+    }
+
+    // Evict completed runs from the Map to prevent unbounded memory growth.
+    // Only runs that have been flushed with an endTime are safe to evict.
+    for (const run of updates) {
+      this.runs.delete(run.id);
     }
   }
 }

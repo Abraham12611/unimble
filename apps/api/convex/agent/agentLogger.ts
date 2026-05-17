@@ -383,8 +383,8 @@ export class AgentLogger {
       executionId: this.config.executionId || undefined,
       message,
       data,
-      durationMs: data?.durationMs as number | undefined,
-      cost: data?.cost as number | undefined,
+      durationMs: typeof data?.durationMs === "number" ? data.durationMs : undefined,
+      cost: typeof data?.cost === "number" ? data.cost : undefined,
       error: error ? { message: error.message, stack: error.stack } : undefined,
     };
 
