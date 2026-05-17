@@ -21,5 +21,6 @@ import "./agent/toolRegistry.test";
 import "./agent/memory/memory.test";
 import "./agent/planning.test";
 import "./agent/multiAgent.test";
+import "./agent/observability.test";
 
 export {};
