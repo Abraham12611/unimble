@@ -383,8 +383,8 @@ Rules:
     content: string,
     availableAgents: SubAgentRegistration[]
   ): Array<{ agentId: string; task: string; dependsOn?: string[] }> {
-    const jsonMatch = content.match(/\[[\s\S]*\]/);
-    if (!jsonMatch) {
+    const jsonArray = this.extractJsonArray(content);
+    if (!jsonArray) {
       // Fallback: single delegation to the first available agent
       if (availableAgents.length > 0) {
         return [{ agentId: availableAgents[0].id, task: content.slice(0, 200) }];
@@ -392,24 +392,56 @@ Rules:
       return [];
     }
 
-    try {
-      const parsed = JSON.parse(jsonMatch[0]);
-      if (!Array.isArray(parsed)) return [];
+    // Validate agent IDs
+    const validIds = new Set(availableAgents.map((a) => a.id));
+    return jsonArray
+      .filter(
+        (d: { agentId?: string; task?: string }) => d.agentId && d.task && validIds.has(d.agentId)
+      )
+      .map((d: { agentId: string; task: string; dependsOn?: string[] }) => ({
+        agentId: d.agentId,
+        task: d.task,
+        dependsOn: d.dependsOn,
+      }));
+  }
 
-      // Validate agent IDs
-      const validIds = new Set(availableAgents.map((a) => a.id));
-      return parsed
-        .filter(
-          (d: { agentId?: string; task?: string }) => d.agentId && d.task && validIds.has(d.agentId)
-        )
-        .map((d: { agentId: string; task: string; dependsOn?: string[] }) => ({
-          agentId: d.agentId,
-          task: d.task,
-          dependsOn: d.dependsOn,
-        }));
-    } catch {
-      return [];
+  /**
+   * Extracts the first valid JSON array from LLM output.
+   *
+   * Strategy: find each `[` in the content and attempt to parse from
+   * that position to each subsequent `]`. Returns the first successful
+   * parse that yields an array. This handles cases where the LLM appends
+   * text containing brackets after the JSON (e.g., "Note: [agent] is...").
+   */
+  private extractJsonArray(content: string): unknown[] | null {
+    let searchFrom = 0;
+    while (searchFrom < content.length) {
+      const openIdx = content.indexOf("[", searchFrom);
+      if (openIdx === -1) break;
+
+      // Try each closing bracket from the nearest to the farthest
+      let closeSearch = openIdx + 1;
+      while (closeSearch < content.length) {
+        const closeIdx = content.indexOf("]", closeSearch);
+        if (closeIdx === -1) break;
+
+        const candidate = content.slice(openIdx, closeIdx + 1);
+        try {
+          const parsed = JSON.parse(candidate);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed;
+          }
+        } catch {
+          // Not valid JSON yet — try the next `]`
+        }
+        closeSearch = closeIdx + 1;
+      }
+
+      // This `[` didn't lead to a valid array — try the next one
+      searchFrom = openIdx + 1;
     }
+
+    return null;
   }
 
   // ---------------------------------------------------------------------------

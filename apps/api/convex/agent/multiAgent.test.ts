@@ -819,6 +819,37 @@ describe("Lead Agent", () => {
       expect(result.messageHistory.some((m) => m.type === "task_delegation")).toBe(true);
       expect(result.messageHistory.some((m) => m.type === "status_update")).toBe(true);
     });
+
+    it("should parse delegation plan when LLM appends text with brackets after JSON", async () => {
+      // Simulate LLM response with trailing text containing brackets
+      const llmCall = createMockLLMCall([
+        `[{"agentId": "writer_agent", "task": "Write a blog post"}]\n\nNote: only [writer_agent] is available for this task.`,
+      ]);
+
+      const subAgentExecutor = vi.fn(
+        async (): Promise<SubAgentResult> => ({
+          success: true,
+          output: "Blog post content",
+          cost: 0.02,
+          durationMs: 1000,
+        })
+      );
+
+      const lead = createLeadAgent("lead_bracket_parse", mockSubAgents);
+      const context = createMockContext("Write a blog post");
+
+      const result = await lead.orchestrate(
+        context,
+        llmCall,
+        createMockToolExecutor(),
+        subAgentExecutor
+      );
+
+      // Should successfully parse and delegate despite trailing brackets
+      expect(result.delegations).toHaveLength(1);
+      expect(result.delegations[0].status).toBe("completed");
+      expect(subAgentExecutor).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe("LeadAgent.execute", () => {

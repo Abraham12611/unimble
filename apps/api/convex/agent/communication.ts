@@ -451,5 +451,11 @@ export function formatMessageForPrompt(message: AgentCommunicationMessage): stri
       return `${header}\nQuestion: ${payload.question}`;
     case "information_response":
       return `${header}\nAnswer: ${payload.answer}${payload.confidence !== undefined ? ` (confidence: ${(payload.confidence * 100).toFixed(0)}%)` : ""}`;
+    default: {
+      // Exhaustiveness guard — TypeScript will error if a new payload kind is added
+      // without handling it above.
+      const _exhaustive: never = payload;
+      return `${header}\n[Unknown message type: ${(_exhaustive as MessagePayload).kind}]`;
+    }
   }
 }
