@@ -371,6 +371,7 @@ Consider what has already been accomplished and any errors encountered.`,
       content: `Execute this step of the plan: "${planStep.description}"
 
 Use the available tools to accomplish this step. When done, provide the result with FINAL_ANSWER: prefix.
+If you discover that the remaining plan steps need to change based on what you found, add NEEDS_REVISION: after your answer.
 If you cannot complete this step, explain why.`,
       timestamp: Date.now(),
     };
@@ -407,12 +408,15 @@ If you cannot complete this step, explain why.`,
       // Check for final answer
       if (response.content.includes("FINAL_ANSWER:")) {
         const answer = response.content.split("FINAL_ANSWER:")[1].trim();
+        // Check if the LLM also signals that the plan needs revision
+        // (e.g., "FINAL_ANSWER: ... NEEDS_REVISION: the API changed")
+        const needsRevision = response.content.includes("NEEDS_REVISION:");
         return {
           completed: true,
           failed: false,
-          output: answer,
+          output: answer.replace(/NEEDS_REVISION:.*$/s, "").trim(),
           cost: totalCost,
-          needsRevision: false,
+          needsRevision,
         };
       }
 
@@ -496,12 +500,14 @@ If you cannot complete this step, explain why.`,
         }
 
         // Genuine prose response (e.g., the LLM answered directly without tools)
+        const needsRevision = content.includes("NEEDS_REVISION:");
+        const cleanOutput = content.replace(/NEEDS_REVISION:.*$/s, "").trim();
         return {
           completed: true,
           failed: false,
-          output: content,
+          output: cleanOutput,
           cost: totalCost,
-          needsRevision: false,
+          needsRevision,
         };
       }
     }
