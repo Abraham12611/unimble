@@ -43,7 +43,7 @@ class OperatorRegistry {
     if (this.templates.has(template.id)) {
       const existing = this.templates.get(template.id)!;
       // Allow re-registration only if version is newer
-      if (existing.template.version >= template.version) {
+      if (semverGte(existing.template.version, template.version)) {
         return;
       }
     }
@@ -664,5 +664,23 @@ operatorRegistry.register(DOCUMENTATION_OPERATOR_TEMPLATE);
 // ---------------------------------------------------------------------------
 // Exports
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Compares two semver strings numerically.
+ * Returns true if `a` is greater than or equal to `b`.
+ */
+function semverGte(a: string, b: string): boolean {
+  const pa = a.split(".").map(Number);
+  const pb = b.split(".").map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const diff = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (diff !== 0) return diff > 0;
+  }
+  return true; // Equal
+}
 
 export { OperatorRegistry };

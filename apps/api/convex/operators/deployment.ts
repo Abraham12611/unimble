@@ -93,19 +93,27 @@ export function validateDeployment(input: DeployOperatorInput): DeploymentValida
       // Skip further validation if not provided
       if (value === undefined || value === null) continue;
 
-      // Number validation
-      if (field.type === "number" && typeof value === "number") {
-        if (field.validation?.min !== undefined && value < field.validation.min) {
+      // Number validation — coerce strings to numbers for validation
+      if (field.type === "number") {
+        const numValue = typeof value === "number" ? value : Number(value);
+        if (isNaN(numValue)) {
           errors.push({
             field: `settings.${field.key}`,
-            message: `${field.label} must be at least ${field.validation.min}`,
+            message: `${field.label} must be a valid number`,
           });
-        }
-        if (field.validation?.max !== undefined && value > field.validation.max) {
-          errors.push({
-            field: `settings.${field.key}`,
-            message: `${field.label} must be at most ${field.validation.max}`,
-          });
+        } else {
+          if (field.validation?.min !== undefined && numValue < field.validation.min) {
+            errors.push({
+              field: `settings.${field.key}`,
+              message: `${field.label} must be at least ${field.validation.min}`,
+            });
+          }
+          if (field.validation?.max !== undefined && numValue > field.validation.max) {
+            errors.push({
+              field: `settings.${field.key}`,
+              message: `${field.label} must be at most ${field.validation.max}`,
+            });
+          }
         }
       }
 

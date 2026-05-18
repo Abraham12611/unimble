@@ -28,6 +28,7 @@ import type {
 } from "./types";
 import type { AgentConfig } from "../agent/types";
 import type { Persona } from "../agent/personas";
+import { buildPersonaPrompt } from "../agent/personas";
 
 // ---------------------------------------------------------------------------
 // Operator Base Class
@@ -81,6 +82,11 @@ export abstract class OperatorBase {
     const errors: DeploymentValidationError[] = [];
     const template = this.getTemplate();
 
+    // Validate workspace ID
+    if (!input.workspaceId || input.workspaceId.trim().length === 0) {
+      errors.push({ field: "workspaceId", message: "Workspace ID is required" });
+    }
+
     // Validate required integrations
     for (const req of template.requiredIntegrations) {
       const connected = input.integrations.filter((i) => req.providers.includes(i.provider));
@@ -88,6 +94,16 @@ export abstract class OperatorBase {
         errors.push({
           field: `integrations.${req.category}`,
           message: `At least one ${req.category} integration is required (${req.providers.join(", ")})`,
+        });
+      }
+    }
+
+    // Validate integration IDs are provided
+    for (const integration of input.integrations) {
+      if (!integration.integrationId || integration.integrationId.trim().length === 0) {
+        errors.push({
+          field: `integrations.${integration.provider}`,
+          message: `Integration ID is required for ${integration.provider}`,
         });
       }
     }
@@ -102,8 +118,27 @@ export abstract class OperatorBase {
     }
 
     // Validate name
-    if (input.name && input.name.trim().length === 0) {
+    if (input.name !== undefined && input.name.trim().length === 0) {
       errors.push({ field: "name", message: "Operator name cannot be empty" });
+    }
+
+    // Validate schedules
+    if (input.schedules) {
+      for (const schedule of input.schedules) {
+        const workflow = template.defaultWorkflows.find((w) => w.id === schedule.workflowId);
+        if (!workflow) {
+          errors.push({
+            field: `schedules.${schedule.workflowId}`,
+            message: `Unknown workflow ID: ${schedule.workflowId}`,
+          });
+        }
+        if (!schedule.cron || schedule.cron.trim().length === 0) {
+          errors.push({
+            field: `schedules.${schedule.workflowId}.cron`,
+            message: "Cron expression is required",
+          });
+        }
+      }
     }
 
     return errors;
@@ -155,12 +190,15 @@ export abstract class OperatorBase {
    * Builds an AgentConfig for this operator's primary agent.
    * Can be overridden by subclasses for custom agent behavior.
    */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   buildAgentConfig(operatorId: string, persona?: Persona): AgentConfig {
     const template = this.getTemplate();
 
     let systemPrompt = template.defaultSystemPrompt;
-    if (this.config.persona) {
+
+    // Use passed persona's prompt if available, otherwise fall back to config persona
+    if (persona) {
+      systemPrompt += `\n\n${buildPersonaPrompt(persona)}`;
+    } else if (this.config.persona) {
       systemPrompt += `\n\n## Custom Instructions\n${this.config.persona}`;
     }
 
@@ -300,18 +338,26 @@ export abstract class OperatorBase {
     if (value === undefined || value === null) return errors;
 
     // Type-specific validation
-    if (field.type === "number" && typeof value === "number") {
-      if (field.validation?.min !== undefined && value < field.validation.min) {
+    if (field.type === "number") {
+      const numValue = typeof value === "number" ? value : Number(value);
+      if (isNaN(numValue)) {
         errors.push({
           field: `settings.${field.key}`,
-          message: `${field.label} must be at least ${field.validation.min}`,
+          message: `${field.label} must be a valid number`,
         });
-      }
-      if (field.validation?.max !== undefined && value > field.validation.max) {
-        errors.push({
-          field: `settings.${field.key}`,
-          message: `${field.label} must be at most ${field.validation.max}`,
-        });
+      } else {
+        if (field.validation?.min !== undefined && numValue < field.validation.min) {
+          errors.push({
+            field: `settings.${field.key}`,
+            message: `${field.label} must be at least ${field.validation.min}`,
+          });
+        }
+        if (field.validation?.max !== undefined && numValue > field.validation.max) {
+          errors.push({
+            field: `settings.${field.key}`,
+            message: `${field.label} must be at most ${field.validation.max}`,
+          });
+        }
       }
     }
 
