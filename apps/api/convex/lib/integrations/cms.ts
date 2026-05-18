@@ -57,7 +57,9 @@ export interface CreatePostInput {
   markdown?: string;
   excerpt?: string;
   tags?: string[];
-  status?: "draft" | "published";
+  status?: "draft" | "published" | "scheduled";
+  /** ISO date string for scheduled publication (CMS-dependent support) */
+  scheduledAt?: string;
   featuredImage?: string;
   slug?: string;
   canonicalUrl?: string;
@@ -172,6 +174,7 @@ export async function cmsCreatePost(
       ...(input.excerpt ? { excerpt: input.excerpt } : {}),
       ...(input.featuredImage ? { featured_image: input.featuredImage } : {}),
       ...(input.canonicalUrl ? { canonical_url: input.canonicalUrl } : {}),
+      ...(input.scheduledAt ? { scheduled_at: input.scheduledAt, date: input.scheduledAt } : {}),
     });
 
     return {
