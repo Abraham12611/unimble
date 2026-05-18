@@ -242,10 +242,15 @@ async function promoteSocially(
       const session = await createComposioSession(workspaceId, [platform]);
       const actionName = getSocialPostAction(platform);
 
-      const postResult = await session.execute(actionName, {
-        text: message,
-        url: publishedUrl,
-      });
+      // For Twitter, the URL is passed separately (not in text body) so
+      // Composio can attach it as a t.co-shortened link.
+      // For other platforms, the URL is already in the message text.
+      const params: Record<string, unknown> =
+        platform === "twitter"
+          ? { text: message, url: publishedUrl }
+          : { text: message };
+
+      const postResult = await session.execute(actionName, params);
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const postData = postResult as any;
@@ -286,6 +291,10 @@ function getSocialPostAction(platform: string): string {
 
 /**
  * Generates a platform-appropriate promotion message.
+ *
+ * For Twitter: the URL is NOT included in the text body — it's passed
+ * separately via the `url` parameter to Composio, which attaches it as
+ * a t.co-shortened link (23 chars). The text budget is 280 - 23 - 1 = 256 chars.
  */
 function generatePromotionMessage(
   draft: ContentDraft,
@@ -293,12 +302,28 @@ function generatePromotionMessage(
   platform: string
 ): string {
   switch (platform) {
-    case "twitter":
-      // Twitter: short, punchy, with hashtags
-      return `${draft.title}\n\n${draft.excerpt.slice(0, 180)}\n\n${url}\n\n${draft.tags.slice(0, 3).map((t) => `#${t.replace(/\s+/g, "")}`).join(" ")}`;
+    case "twitter": {
+      // Twitter: URL is passed separately (counts as 23 chars via t.co).
+      // Budget: 280 - 23 (t.co link) - 1 (space before link) = 256 chars for text.
+      const TWITTER_TEXT_BUDGET = 256;
+      const hashtags = draft.tags
+        .slice(0, 3)
+        .map((t) => `#${t.replace(/\s+/g, "")}`)
+        .join(" ");
+      const title = draft.title.slice(0, 100);
+      // Reserve space for title + newlines + hashtags
+      const reservedChars = title.length + 2 + hashtags.length + 2; // "\n\n" between sections
+      const excerptBudget = Math.max(0, TWITTER_TEXT_BUDGET - reservedChars);
+      const excerpt = excerptBudget > 30 ? draft.excerpt.slice(0, excerptBudget) : "";
+
+      const parts = [title];
+      if (excerpt) parts.push(excerpt);
+      if (hashtags) parts.push(hashtags);
+      return parts.join("\n\n");
+    }
 
     case "linkedin":
-      // LinkedIn: professional, longer form
+      // LinkedIn: professional, longer form. URL included in text (no char limit concern).
       return `📝 New article: ${draft.title}\n\n${draft.excerpt}\n\nKey takeaways:\n${draft.tags.slice(0, 5).map((t) => `• ${t}`).join("\n")}\n\nRead more: ${url}`;
 
     case "reddit":
