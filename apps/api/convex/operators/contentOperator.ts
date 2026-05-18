@@ -350,7 +350,25 @@ export class ContentOperator extends OperatorBase {
             maxTokens: 8192,
           },
         },
-        // Step 5b: Human Approval (if configured)
+        // Step 5a-2: Post-revision approval gate
+        // After revision, content goes to human approval (if required) or directly to publish
+        ...(approvalRequired
+          ? [
+              {
+                id: "revision_approval",
+                name: "Post-Revision Approval",
+                type: "approval" as const,
+                dependsOn: ["revision"],
+                config: {
+                  contentRef: "{{revision.output}}",
+                  approvalType: "content_publish",
+                  timeoutMs: 86400000, // 24 hours
+                  timeoutAction: "skip" as const,
+                },
+              },
+            ]
+          : []),
+        // Step 5b: Human Approval (if configured — for first-pass approved content)
         ...(approvalRequired
           ? [
               {
@@ -367,12 +385,14 @@ export class ContentOperator extends OperatorBase {
               },
             ]
           : []),
-        // Step 6: Publish
+        // Step 6: Publish — depends on whichever approval path was taken
         {
           id: "publish",
           name: "Publish Content",
           type: "agent",
-          dependsOn: approvalRequired ? ["human_approval"] : ["review_decision"],
+          dependsOn: approvalRequired
+            ? ["human_approval", "revision_approval"]
+            : ["review_decision", "revision"],
           config: {
             prompt: this.buildPublishPrompt(),
             modelTier: "fast",

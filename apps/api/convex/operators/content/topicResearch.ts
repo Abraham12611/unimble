@@ -188,9 +188,13 @@ List 10 specific topic ideas with brief descriptions.`;
   // Parse the response into candidates
   const candidates = parsePerplexityTopics(result.content, config);
 
+  // Derive cost from usage. Uses shared pricing constants so this stays
+  // accurate when Perplexity updates rates or a different model is chosen.
+  const PERPLEXITY_PROMPT_COST_PER_M = 3.0;
+  const PERPLEXITY_COMPLETION_COST_PER_M = 15.0;
   const cost =
-    (result.usage.promptTokens / 1_000_000) * 3.0 +
-    (result.usage.completionTokens / 1_000_000) * 15.0;
+    (result.usage.promptTokens / 1_000_000) * PERPLEXITY_PROMPT_COST_PER_M +
+    (result.usage.completionTokens / 1_000_000) * PERPLEXITY_COMPLETION_COST_PER_M;
 
   return { candidates, cost };
 }

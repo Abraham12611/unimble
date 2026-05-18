@@ -141,10 +141,13 @@ export function aggregateMetrics(
   const topPerformers = sorted.slice(0, 5);
   const underperformers = sorted.slice(-3).reverse();
 
-  // Determine trend (compare first half to second half)
-  const midpoint = Math.floor(filtered.length / 2);
-  const firstHalf = filtered.slice(0, midpoint);
-  const secondHalf = filtered.slice(midpoint);
+  // Determine trend (compare first half to second half, sorted chronologically)
+  const chronological = [...filtered].sort(
+    (a, b) => new Date(a.publishedAt).getTime() - new Date(b.publishedAt).getTime()
+  );
+  const midpoint = Math.floor(chronological.length / 2);
+  const firstHalf = chronological.slice(0, midpoint);
+  const secondHalf = chronological.slice(midpoint);
   const trend = determineTrend(firstHalf, secondHalf);
 
   return {

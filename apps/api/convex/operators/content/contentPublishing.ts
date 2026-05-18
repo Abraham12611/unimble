@@ -191,10 +191,11 @@ async function publishToCms(
 }
 
 /**
- * Promotes content on social media platforms.
+ * Promotes content on social media platforms via Composio.
  *
- * Note: Actual social posting uses Composio actions.
- * This function builds the promotion messages and queues them.
+ * Attempts to post to each configured platform using the workspace's
+ * connected social integrations. Returns per-platform results with
+ * actual success/failure status.
  */
 async function promoteSocially(
   draft: ContentDraft,
@@ -202,25 +203,58 @@ async function promoteSocially(
   workspaceId: string,
   config: SocialPromotionConfig
 ): Promise<SocialPromotionResult[]> {
+  const { createComposioSession } = await import("../../lib/composio");
   const results: SocialPromotionResult[] = [];
 
   for (const platform of config.platforms) {
-    const message = config.customMessages?.[platform] ?? generatePromotionMessage(draft, publishedUrl, platform);
+    const message =
+      config.customMessages?.[platform] ??
+      generatePromotionMessage(draft, publishedUrl, platform);
 
-    // For now, queue the promotion (actual posting via Composio in workflow)
-    results.push({
-      platform,
-      success: true,
-      url: undefined, // Will be set after actual posting
-    });
+    try {
+      const session = await createComposioSession(workspaceId, [platform]);
+      const actionName = getSocialPostAction(platform);
 
-    // Store the promotion message for the workflow to pick up
-    // In production, this would be stored in Convex and processed by the social posting step
-    void message; // Used by the workflow engine
-    void workspaceId; // Used for Composio session
+      const postResult = await session.execute(actionName, {
+        text: message,
+        url: publishedUrl,
+      });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const postData = postResult as any;
+      results.push({
+        platform,
+        success: true,
+        url: postData?.url ?? postData?.link ?? undefined,
+      });
+    } catch (error) {
+      results.push({
+        platform,
+        success: false,
+        error: error instanceof Error ? error.message : "Social posting failed",
+      });
+    }
   }
 
   return results;
+}
+
+/**
+ * Maps a social platform to its Composio action name.
+ */
+function getSocialPostAction(platform: string): string {
+  switch (platform) {
+    case "twitter":
+      return "TWITTER_CREATE_TWEET";
+    case "linkedin":
+      return "LINKEDIN_CREATE_POST";
+    case "reddit":
+      return "REDDIT_SUBMIT_LINK";
+    case "hackernews":
+      return "HACKERNEWS_SUBMIT";
+    default:
+      return `${platform.toUpperCase()}_CREATE_POST`;
+  }
 }
 
 /**

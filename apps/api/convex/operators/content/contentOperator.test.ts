@@ -129,7 +129,7 @@ function createTestPerformanceRecords(): ContentPerformanceRecord[] {
       title: "React Native Performance Tips",
       contentType: "blog_post",
       publishedAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-      analytics: { views: 5000, uniqueVisitors: 3500, avgTimeOnPage: 180, bounceRate: 0.4, socialShares: 120, comments: 15, backlinks: 5, searchImpressions: 8000, searchClicks: 400, avgSearchPosition: 12 },
+      analytics: { contentId: "c1", views: 5000, uniqueVisitors: 3500, avgTimeOnPage: 180, bounceRate: 0.4, socialShares: 120, comments: 15, backlinks: 5, searchImpressions: 8000, searchClicks: 400, avgSearchPosition: 12 },
       keywords: ["react native", "performance"],
       wordCount: 1800,
     },
@@ -138,7 +138,7 @@ function createTestPerformanceRecords(): ContentPerformanceRecord[] {
       title: "Subscription Monetization Guide",
       contentType: "guide",
       publishedAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
-      analytics: { views: 8000, uniqueVisitors: 6000, avgTimeOnPage: 240, bounceRate: 0.3, socialShares: 200, comments: 30, backlinks: 12, searchImpressions: 15000, searchClicks: 800, avgSearchPosition: 8 },
+      analytics: { contentId: "c2", views: 8000, uniqueVisitors: 6000, avgTimeOnPage: 240, bounceRate: 0.3, socialShares: 200, comments: 30, backlinks: 12, searchImpressions: 15000, searchClicks: 800, avgSearchPosition: 8 },
       keywords: ["subscriptions", "monetization", "mobile"],
       wordCount: 3200,
     },
@@ -147,7 +147,7 @@ function createTestPerformanceRecords(): ContentPerformanceRecord[] {
       title: "Flutter vs React Native 2026",
       contentType: "comparison",
       publishedAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
-      analytics: { views: 12000, uniqueVisitors: 9000, avgTimeOnPage: 200, bounceRate: 0.35, socialShares: 350, comments: 45, backlinks: 20, searchImpressions: 25000, searchClicks: 1500, avgSearchPosition: 5 },
+      analytics: { contentId: "c3", views: 12000, uniqueVisitors: 9000, avgTimeOnPage: 200, bounceRate: 0.35, socialShares: 350, comments: 45, backlinks: 20, searchImpressions: 25000, searchClicks: 1500, avgSearchPosition: 5 },
       keywords: ["flutter", "react native", "comparison"],
       wordCount: 2500,
     },
@@ -156,7 +156,7 @@ function createTestPerformanceRecords(): ContentPerformanceRecord[] {
       title: "Setting Up CI/CD for Mobile",
       contentType: "tutorial",
       publishedAt: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString(),
-      analytics: { views: 3000, uniqueVisitors: 2200, avgTimeOnPage: 300, bounceRate: 0.25, socialShares: 80, comments: 10, backlinks: 3, searchImpressions: 5000, searchClicks: 250, avgSearchPosition: 18 },
+      analytics: { contentId: "c4", views: 3000, uniqueVisitors: 2200, avgTimeOnPage: 300, bounceRate: 0.25, socialShares: 80, comments: 10, backlinks: 3, searchImpressions: 5000, searchClicks: 250, avgSearchPosition: 18 },
       keywords: ["ci/cd", "mobile", "automation"],
       wordCount: 2000,
     },
@@ -165,7 +165,7 @@ function createTestPerformanceRecords(): ContentPerformanceRecord[] {
       title: "Mobile App Analytics Deep Dive",
       contentType: "blog_post",
       publishedAt: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString(),
-      analytics: { views: 2000, uniqueVisitors: 1500, avgTimeOnPage: 150, bounceRate: 0.5, socialShares: 40, comments: 5, backlinks: 1, searchImpressions: 3000, searchClicks: 100, avgSearchPosition: 25 },
+      analytics: { contentId: "c5", views: 2000, uniqueVisitors: 1500, avgTimeOnPage: 150, bounceRate: 0.5, socialShares: 40, comments: 5, backlinks: 1, searchImpressions: 3000, searchClicks: 100, avgSearchPosition: 25 },
       keywords: ["analytics", "mobile"],
       wordCount: 1200,
     },
@@ -233,7 +233,14 @@ describe("ContentOperator", () => {
       const workflow = operator.buildWeeklyPipelineWorkflow("op_123");
       expect(workflow.name).toBe("Weekly Content Pipeline");
       expect(workflow.trigger.type).toBe("schedule");
-      expect(workflow.steps.length).toBeGreaterThan(5);
+      expect(workflow.steps.length).toBeGreaterThan(6);
+      // Verify revision path leads to publish
+      const revisionStep = workflow.steps.find((s) => s.id === "revision");
+      const publishStep = workflow.steps.find((s) => s.id === "publish");
+      expect(revisionStep).toBeDefined();
+      expect(publishStep).toBeDefined();
+      // Publish should depend on revision_approval (since approval is required in test config)
+      expect(publishStep!.dependsOn).toContain("revision_approval");
     });
 
     it("builds on-demand workflow", () => {
