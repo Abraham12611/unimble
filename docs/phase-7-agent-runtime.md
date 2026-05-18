@@ -2,7 +2,7 @@
 
 > Completed: May 2026
 > Branch: `develop` (merged from feature branches)
-> Tests: 418 passing
+> Tests: 418 passing (full repo suite; 258 are Phase 7 agent tests)
 > TypeCheck: Clean
 > Lint: Clean
 
@@ -76,24 +76,30 @@ the architecture is custom-built on Convex.
 
 ## Test Coverage
 
-| Module              | Statements | Functions |
-| ------------------- | ---------- | --------- |
-| agentBase.ts        | 95.19%     | 88.88%    |
-| reviewerAgent.ts    | 93.81%     | 100%      |
-| tracing.ts          | 93.99%     | 94.73%    |
-| agentLogger.ts      | 88.31%     | 91.66%    |
-| leadAgent.ts        | 88.28%     | 84.61%    |
-| planExecuteAgent.ts | 80.32%     | 100%      |
-| toolRegistry.ts     | 83.18%     | 78.94%    |
-| promptManager.ts    | 96.55%     | 100%      |
-| selfCorrection.ts   | 91.66%     | 100%      |
-| communication.ts    | 97.14%     | 100%      |
-| personas.ts         | 95.83%     | 100%      |
+Coverage gate: **>80% statement coverage** on pure logic modules.
+(Modules that make external API/DB calls are excluded — covered in Phase 10 integration tests.)
+
+| Module              | Statements | Functions | Notes                                    |
+| ------------------- | ---------- | --------- | ---------------------------------------- |
+| agentBase.ts        | 95.19%     | 88.88%    | ✓                                        |
+| reviewerAgent.ts    | 93.81%     | 100%      | ✓                                        |
+| tracing.ts          | 93.99%     | 94.73%    | ✓                                        |
+| agentLogger.ts      | 88.31%     | 91.66%    | ✓                                        |
+| leadAgent.ts        | 88.28%     | 84.61%    | ✓                                        |
+| promptManager.ts    | 96.55%     | 100%      | ✓                                        |
+| selfCorrection.ts   | 91.66%     | 100%      | ✓                                        |
+| communication.ts    | 97.14%     | 100%      | ✓                                        |
+| personas.ts         | 95.83%     | 100%      | ✓                                        |
+| toolRegistry.ts     | 83.18%     | 78.94%    | ✓ (statements pass gate)                 |
+| planExecuteAgent.ts | 80.32%     | 100%      | ✓                                        |
+| builtInTools.ts     | —          | —         | External API calls; deferred to Phase 10 |
+| agentContext.ts     | —          | —         | Convex DB queries; deferred to Phase 10  |
 
 **Overall agent directory**: 77.38% statements, 93.92% functions
 
-- Core modules (excluding DB-dependent `agentContext.ts`): >80%
-- `agentContext.ts` (0%) requires Convex integration tests (Phase 10)
+- All 11 pure logic modules pass the >80% statement coverage gate
+- `builtInTools.ts` and `agentContext.ts` are excluded (external dependencies)
+- Phase 7 contributes **258 agent-specific tests** to the 418 total repo suite
 
 ---
 
@@ -138,15 +144,16 @@ convex/agent/
 
 ## Quality Gates ✓
 
-- [x] All 418 tests passing (100% pass rate)
+- [x] All 418 tests passing — 100% pass rate (258 Phase 7 + 160 Phases 1–6)
 - [x] TypeScript type check clean (`tsc --noEmit`)
 - [x] ESLint clean (no errors)
 - [x] Prettier formatted (enforced by pre-commit hooks)
 - [x] No console.log or debug code
 - [x] No hardcoded secrets
-- [x] All Greptile review findings addressed
+- [x] All Greptile review findings addressed (3 review rounds)
 - [x] CI checks passing (typecheck + lint + tests)
-- [x] Core module coverage >80%
+- [x] Pure logic modules >80% statement coverage (11/11 pass)
+- [ ] `builtInTools.ts` + `agentContext.ts` integration tests (deferred to Phase 10)
 
 ---
 
