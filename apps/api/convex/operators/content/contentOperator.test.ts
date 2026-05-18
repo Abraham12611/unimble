@@ -246,6 +246,13 @@ describe("ContentOperator", () => {
       expect(publishStep!.dependsOn).not.toContain("revision_approval");
       expect(publishRevisedStep!.dependsOn).toContain("revision_approval");
       expect(publishRevisedStep!.dependsOn).not.toContain("human_approval");
+      // publish_revised references revision.output, not content_generation.output
+      const revisedConfig = publishRevisedStep!.config as { prompt: string };
+      expect(revisedConfig.prompt).toContain("{{revision.output}}");
+      expect(revisedConfig.prompt).not.toContain("{{content_generation.output}}");
+      // publish (first-pass) references content_generation.output
+      const publishConfig = publishStep!.config as { prompt: string };
+      expect(publishConfig.prompt).toContain("{{content_generation.output}}");
     });
 
     it("builds on-demand workflow", () => {

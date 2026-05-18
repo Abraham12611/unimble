@@ -371,7 +371,7 @@ export class ContentOperator extends OperatorBase {
                 type: "agent" as const,
                 dependsOn: ["revision_approval"],
                 config: {
-                  prompt: this.buildPublishPrompt(),
+                  prompt: this.buildPublishPrompt("{{revision.output}}"),
                   modelTier: "fast" as const,
                   tools: ["composio.execute"],
                   outputFormat: "json" as const,
@@ -385,7 +385,7 @@ export class ContentOperator extends OperatorBase {
                 type: "agent" as const,
                 dependsOn: ["revision"],
                 config: {
-                  prompt: this.buildPublishPrompt(),
+                  prompt: this.buildPublishPrompt("{{revision.output}}"),
                   modelTier: "fast" as const,
                   tools: ["composio.execute"],
                   outputFormat: "json" as const,
@@ -643,12 +643,15 @@ Return JSON with: verdict, overallScore, scores (per dimension), issues (array),
 
   /**
    * Builds the publish prompt.
+   * @param contentSourceRef - Template reference to the content to publish.
+   *   Defaults to {{content_generation.output}} for first-pass approved content.
+   *   Use {{revision.output}} for revised content.
    */
-  buildPublishPrompt(): string {
+  buildPublishPrompt(contentSourceRef = "{{content_generation.output}}"): string {
     return `Publish the approved content to the connected CMS.
 
 ## Content to Publish
-{{content_generation.output}}
+${contentSourceRef}
 
 ## Instructions
 1. Format the content for the target CMS
