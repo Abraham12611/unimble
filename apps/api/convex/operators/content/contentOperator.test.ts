@@ -255,16 +255,27 @@ describe("ContentOperator", () => {
       expect(publishConfig.prompt).toContain("{{content_generation.output}}");
     });
 
-    it("builds on-demand workflow with publish step", () => {
+    it("builds on-demand workflow with review gate and publish step", () => {
       const operator = new ContentOperator(createTestConfig());
       const workflow = operator.buildOnDemandWorkflow("op_123");
       expect(workflow.name).toBe("On-Demand Content");
       expect(workflow.trigger.type).toBe("manual");
-      // Should have research, generate, review, approval, publish
-      expect(workflow.steps.length).toBe(5);
+      // Should have: research, generate, review, review_decision, revision,
+      // revision_approval, publish_revised, on_demand_approval, publish, notify_failure
+      const reviewDecision = workflow.steps.find((s) => s.id === "review_decision");
       const publishStep = workflow.steps.find((s) => s.id === "publish");
+      const revisionStep = workflow.steps.find((s) => s.id === "revision");
+      const publishRevisedStep = workflow.steps.find((s) => s.id === "publish_revised");
+      const notifyFailure = workflow.steps.find((s) => s.id === "notify_failure");
+      expect(reviewDecision).toBeDefined();
+      expect(reviewDecision!.type).toBe("conditional");
       expect(publishStep).toBeDefined();
+      expect(revisionStep).toBeDefined();
+      expect(publishRevisedStep).toBeDefined();
+      expect(notifyFailure).toBeDefined();
+      // Publish depends on approval, not directly on review
       expect(publishStep!.dependsOn).toContain("on_demand_approval");
+      expect(publishStep!.dependsOn).not.toContain("review");
     });
 
     it("calculates topic priority correctly", () => {

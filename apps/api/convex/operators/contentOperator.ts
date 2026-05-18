@@ -526,14 +526,90 @@ Return a structured research summary.`,
             temperature: 0.2,
           },
         },
-        // Approval gate before publishing
+        // Conditional: route based on review verdict
+        {
+          id: "review_decision",
+          name: "Review Decision",
+          type: "conditional",
+          dependsOn: ["review"],
+          config: {
+            conditions: [
+              {
+                expression: "{{review.output.verdict}} === 'approve'",
+                thenSteps: approvalRequired ? ["on_demand_approval"] : ["publish"],
+              },
+              {
+                expression: "{{review.output.verdict}} === 'revise'",
+                thenSteps: ["revision"],
+              },
+            ],
+            elseSteps: ["notify_failure"],
+          },
+        },
+        // Revision path
+        {
+          id: "revision",
+          name: "Content Revision",
+          type: "agent",
+          dependsOn: ["review_decision"],
+          config: {
+            prompt: this.buildRevisionPrompt(),
+            modelTier: "generation",
+            tools: ["perplexity.search", "llm.generate"],
+            outputFormat: "markdown",
+            maxTokens: 8192,
+          },
+        },
+        // Publish revised content
+        ...(approvalRequired
+          ? [
+              {
+                id: "revision_approval",
+                name: "Post-Revision Approval",
+                type: "approval" as const,
+                dependsOn: ["revision"],
+                config: {
+                  contentRef: "{{revision.output}}",
+                  approvalType: "content_publish",
+                  timeoutMs: 86400000,
+                  timeoutAction: "skip" as const,
+                },
+              },
+              {
+                id: "publish_revised",
+                name: "Publish Revised Content",
+                type: "agent" as const,
+                dependsOn: ["revision_approval"],
+                config: {
+                  prompt: this.buildPublishPrompt("{{revision.output}}"),
+                  modelTier: "fast" as const,
+                  tools: ["composio.execute"],
+                  outputFormat: "json" as const,
+                },
+              },
+            ]
+          : [
+              {
+                id: "publish_revised",
+                name: "Publish Revised Content",
+                type: "agent" as const,
+                dependsOn: ["revision"],
+                config: {
+                  prompt: this.buildPublishPrompt("{{revision.output}}"),
+                  modelTier: "fast" as const,
+                  tools: ["composio.execute"],
+                  outputFormat: "json" as const,
+                },
+              },
+            ]),
+        // Approve path (first-pass approved content)
         ...(approvalRequired
           ? [
               {
                 id: "on_demand_approval",
                 name: "Approve for Publishing",
                 type: "approval" as const,
-                dependsOn: ["review"],
+                dependsOn: ["review_decision"],
                 config: {
                   contentRef: "{{generate.output}}",
                   approvalType: "content_publish",
@@ -541,19 +617,47 @@ Return a structured research summary.`,
                   timeoutAction: "skip" as const,
                 },
               },
+              {
+                id: "publish",
+                name: "Publish Content",
+                type: "agent" as const,
+                dependsOn: ["on_demand_approval"],
+                config: {
+                  prompt: this.buildPublishPrompt(),
+                  modelTier: "fast" as const,
+                  tools: ["composio.execute"],
+                  outputFormat: "json" as const,
+                },
+              },
             ]
-          : []),
-        // Publish step
+          : [
+              {
+                id: "publish",
+                name: "Publish Content",
+                type: "agent" as const,
+                dependsOn: ["review_decision"],
+                config: {
+                  prompt: this.buildPublishPrompt(),
+                  modelTier: "fast" as const,
+                  tools: ["composio.execute"],
+                  outputFormat: "json" as const,
+                },
+              },
+            ]),
+        // Failure notification
         {
-          id: "publish",
-          name: "Publish Content",
-          type: "agent",
-          dependsOn: approvalRequired ? ["on_demand_approval"] : ["review"],
+          id: "notify_failure",
+          name: "Notify Failure",
+          type: "tool",
+          dependsOn: ["review_decision"],
+          continueOnFailure: true,
           config: {
-            prompt: this.buildPublishPrompt(),
-            modelTier: "fast",
-            tools: ["composio.execute"],
-            outputFormat: "json",
+            toolName: "notification.send",
+            params: {
+              title: "On-Demand Content Review Failed",
+              message: "Content was rejected during review. Manual intervention needed.",
+              type: "warning",
+            },
           },
         },
       ],
