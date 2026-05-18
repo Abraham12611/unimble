@@ -460,6 +460,8 @@ export class ContentOperator extends OperatorBase {
    * Triggered via API when a user requests content on a specific topic.
    */
   buildOnDemandWorkflow(operatorId: string): WorkflowDefinition {
+    const approvalRequired = this.config.approvalRequired;
+
     return {
       name: "On-Demand Content",
       description: "Generate content on a specific topic provided by the user",
@@ -476,6 +478,7 @@ export class ContentOperator extends OperatorBase {
             },
             keywords: { type: "array", items: { type: "string" } },
             wordCount: { type: "number" },
+            autoPublish: { type: "boolean", description: "Publish immediately if review passes" },
           },
           required: ["topic"],
         },
@@ -521,6 +524,36 @@ Return a structured research summary.`,
             tools: ["perplexity.search"],
             outputFormat: "json",
             temperature: 0.2,
+          },
+        },
+        // Approval gate before publishing
+        ...(approvalRequired
+          ? [
+              {
+                id: "on_demand_approval",
+                name: "Approve for Publishing",
+                type: "approval" as const,
+                dependsOn: ["review"],
+                config: {
+                  contentRef: "{{generate.output}}",
+                  approvalType: "content_publish",
+                  timeoutMs: 86400000,
+                  timeoutAction: "skip" as const,
+                },
+              },
+            ]
+          : []),
+        // Publish step
+        {
+          id: "publish",
+          name: "Publish Content",
+          type: "agent",
+          dependsOn: approvalRequired ? ["on_demand_approval"] : ["review"],
+          config: {
+            prompt: this.buildPublishPrompt(),
+            modelTier: "fast",
+            tools: ["composio.execute"],
+            outputFormat: "json",
           },
         },
       ],

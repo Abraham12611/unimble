@@ -255,12 +255,16 @@ describe("ContentOperator", () => {
       expect(publishConfig.prompt).toContain("{{content_generation.output}}");
     });
 
-    it("builds on-demand workflow", () => {
+    it("builds on-demand workflow with publish step", () => {
       const operator = new ContentOperator(createTestConfig());
       const workflow = operator.buildOnDemandWorkflow("op_123");
       expect(workflow.name).toBe("On-Demand Content");
       expect(workflow.trigger.type).toBe("manual");
-      expect(workflow.steps.length).toBe(3);
+      // Should have research, generate, review, approval, publish
+      expect(workflow.steps.length).toBe(5);
+      const publishStep = workflow.steps.find((s) => s.id === "publish");
+      expect(publishStep).toBeDefined();
+      expect(publishStep!.dependsOn).toContain("on_demand_approval");
     });
 
     it("calculates topic priority correctly", () => {
@@ -442,16 +446,16 @@ describe("Content Publishing (8.2.5)", () => {
   });
 
   it("schedules publication", () => {
-    const draft = createTestDraft();
     const config: PublishingConfig = {
       workspaceId: "ws_123",
       primaryCms: "wordpress",
       publishStatus: "draft",
     };
-    const result = schedulePublication(draft, "2026-06-01T10:00:00Z", config);
+    const result = schedulePublication("2026-06-01T10:00:00Z", config);
     expect(result.scheduledAt).toBe("2026-06-01T10:00:00Z");
     expect(result.platform).toBe("wordpress");
     expect(result.status).toBe("scheduled");
+    expect(result.workspaceId).toBe("ws_123");
   });
 });
 

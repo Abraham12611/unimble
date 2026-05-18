@@ -28,8 +28,8 @@ export interface PublishingConfig {
   /** Additional platforms for cross-posting */
   crossPostPlatforms?: CmsToolkit[];
   /** Whether to publish immediately or as draft */
-  publishStatus: "draft" | "published";
-  /** Scheduled publish time (ISO string) */
+  publishStatus: "draft" | "published" | "scheduled";
+  /** Scheduled publish time (ISO string). When set and in the future, overrides publishStatus to "scheduled". */
   scheduledAt?: string;
   /** Social media promotion config */
   socialPromotion?: SocialPromotionConfig;
@@ -94,7 +94,7 @@ export interface SocialPromotionResult {
 /**
  * Publishes content through the full publishing workflow.
  *
- * 1. Publish to primary CMS
+ * 1. Publish to primary CMS (or schedule for future publication)
  * 2. Cross-post to additional platforms
  * 3. Queue social media promotion
  */
@@ -102,12 +102,32 @@ export async function publishContent(
   draft: ContentDraft,
   config: PublishingConfig
 ): Promise<PublishingWorkflowResult> {
-  // Step 1: Publish to primary CMS
-  const primary = await publishToCms(draft, config.workspaceId, config.primaryCms, config.publishStatus);
+  // Determine effective status: if scheduledAt is in the future, use "scheduled"
+  let effectiveStatus = config.publishStatus;
+  let scheduledAt: string | undefined;
 
-  // Step 2: Cross-post (only if primary succeeded)
+  if (config.scheduledAt) {
+    const scheduledTime = new Date(config.scheduledAt).getTime();
+    if (scheduledTime > Date.now()) {
+      effectiveStatus = "scheduled";
+      scheduledAt = config.scheduledAt;
+    }
+    // If scheduledAt is in the past, publish immediately (effectiveStatus unchanged)
+  }
+
+  // Step 1: Publish to primary CMS
+  const primary = await publishToCms(
+    draft,
+    config.workspaceId,
+    config.primaryCms,
+    effectiveStatus,
+    undefined,
+    scheduledAt
+  );
+
+  // Step 2: Cross-post (only if primary succeeded and not scheduled)
   const crossPosts: PublishResult[] = [];
-  if (primary.success && config.crossPostPlatforms) {
+  if (primary.success && config.crossPostPlatforms && effectiveStatus !== "scheduled") {
     for (const platform of config.crossPostPlatforms) {
       const result = await publishToCms(
         draft,
@@ -120,9 +140,9 @@ export async function publishContent(
     }
   }
 
-  // Step 3: Social promotion (only if primary succeeded)
+  // Step 3: Social promotion (only if primary succeeded and published immediately)
   const socialPromotions: SocialPromotionResult[] = [];
-  if (primary.success && config.socialPromotion) {
+  if (primary.success && config.socialPromotion && effectiveStatus !== "scheduled") {
     const promotions = await promoteSocially(
       draft,
       primary.url ?? "",
@@ -137,9 +157,14 @@ export async function publishContent(
   const totalPlatforms = 1 + (config.crossPostPlatforms?.length ?? 0);
   const socialSuccess = socialPromotions.filter((r) => r.success).length;
 
-  const summary = primary.success
-    ? `Published to ${successCount}/${totalPlatforms} platforms. ${socialSuccess > 0 ? `${socialSuccess} social promotions queued.` : ""}`
-    : `Publishing failed: ${primary.error}`;
+  let summary: string;
+  if (!primary.success) {
+    summary = `Publishing failed: ${primary.error}`;
+  } else if (effectiveStatus === "scheduled") {
+    summary = `Scheduled for publication at ${scheduledAt} on ${config.primaryCms}.`;
+  } else {
+    summary = `Published to ${successCount}/${totalPlatforms} platforms.${socialSuccess > 0 ? ` ${socialSuccess} social promotions sent.` : ""}`;
+  }
 
   return {
     primary,
@@ -157,8 +182,9 @@ async function publishToCms(
   draft: ContentDraft,
   workspaceId: string,
   toolkit: CmsToolkit,
-  status: "draft" | "published",
-  canonicalUrl?: string
+  status: "draft" | "published" | "scheduled",
+  canonicalUrl?: string,
+  scheduledAt?: string
 ): Promise<PublishResult> {
   const input: CreatePostInput = {
     title: draft.title,
@@ -166,9 +192,10 @@ async function publishToCms(
     markdown: draft.markdown,
     excerpt: draft.excerpt,
     tags: draft.tags,
-    status,
+    status: status === "scheduled" ? "scheduled" : status,
     slug: draft.slug,
     ...(canonicalUrl ? { canonicalUrl } : {}),
+    ...(scheduledAt ? { scheduledAt } : {}),
   };
 
   const result = await cmsCreatePost(workspaceId, toolkit, input);
@@ -179,7 +206,7 @@ async function publishToCms(
       url: result.data.url ?? result.data.canonicalUrl,
       externalId: result.data.externalId,
       platform: toolkit,
-      publishedAt: new Date().toISOString(),
+      publishedAt: scheduledAt ?? new Date().toISOString(),
     };
   }
 
@@ -288,24 +315,30 @@ function generatePromotionMessage(
 }
 
 /**
- * Schedules content for future publication.
+ * Creates scheduling metadata for future publication.
  *
- * Returns the scheduling details. The actual publication
- * is handled by the workflow engine's schedule trigger.
+ * This does NOT publish — it returns the scheduling details that the
+ * workflow engine uses to defer the actual `publishContent` call.
+ * The workflow engine's schedule trigger handles the delayed execution.
+ *
+ * To actually publish with scheduling, pass `scheduledAt` in the
+ * `PublishingConfig` when calling `publishContent` — the CMS will
+ * receive the scheduled status and date.
  */
 export function schedulePublication(
-  draft: ContentDraft,
   scheduledAt: string,
   config: PublishingConfig
 ): {
   scheduledAt: string;
   platform: string;
   status: "scheduled";
+  workspaceId: string;
 } {
   return {
     scheduledAt,
     platform: config.primaryCms,
     status: "scheduled",
+    workspaceId: config.workspaceId,
   };
 }
 
