@@ -166,11 +166,17 @@ export function buildOperatorConfiguration(input: DeployOperatorInput): Operator
     throw new Error(`Template "${input.templateId}" not found`);
   }
 
-  // Merge settings with defaults
+  // Merge settings with defaults, coercing number fields to actual numbers
   const settings: Record<string, unknown> = {};
   for (const section of template.configSchema.sections) {
     for (const field of section.fields) {
-      settings[field.key] = input.settings[field.key] ?? field.default;
+      const raw = input.settings[field.key] ?? field.default;
+      if (field.type === "number" && raw !== undefined && raw !== null) {
+        const coerced = typeof raw === "number" ? raw : Number(raw);
+        settings[field.key] = isNaN(coerced) ? raw : coerced;
+      } else {
+        settings[field.key] = raw;
+      }
     }
   }
 

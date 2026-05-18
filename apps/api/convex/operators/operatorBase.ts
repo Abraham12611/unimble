@@ -150,11 +150,17 @@ export abstract class OperatorBase {
   buildConfiguration(input: DeployOperatorInput): OperatorConfiguration {
     const template = this.getTemplate();
 
-    // Merge user settings with defaults
+    // Merge user settings with defaults, coercing number fields to actual numbers
     const settings: Record<string, unknown> = {};
     for (const section of template.configSchema.sections) {
       for (const field of section.fields) {
-        settings[field.key] = input.settings[field.key] ?? field.default;
+        const raw = input.settings[field.key] ?? field.default;
+        if (field.type === "number" && raw !== undefined && raw !== null) {
+          const coerced = typeof raw === "number" ? raw : Number(raw);
+          settings[field.key] = isNaN(coerced) ? raw : coerced;
+        } else {
+          settings[field.key] = raw;
+        }
       }
     }
 
@@ -301,9 +307,14 @@ export abstract class OperatorBase {
   // Lifecycle
   // ---------------------------------------------------------------------------
 
-  /** Returns the current configuration. */
+  /** Returns the current configuration (deep copy to prevent external mutation). */
   getConfiguration(): OperatorConfiguration {
-    return { ...this.config };
+    return {
+      ...this.config,
+      settings: { ...this.config.settings },
+      integrations: this.config.integrations.map((i) => ({ ...i })),
+      schedules: this.config.schedules.map((s) => ({ ...s })),
+    };
   }
 
   /** Updates the operator's settings. */
