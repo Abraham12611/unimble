@@ -276,6 +276,17 @@ describe("ContentOperator", () => {
       // Publish depends on approval, not directly on review
       expect(publishStep!.dependsOn).toContain("on_demand_approval");
       expect(publishStep!.dependsOn).not.toContain("review");
+      // On-demand publish references {{generate.output}} (not {{content_generation.output}})
+      const publishConfig = publishStep!.config as { prompt: string };
+      expect(publishConfig.prompt).toContain("{{generate.output}}");
+      expect(publishConfig.prompt).not.toContain("{{content_generation.output}}");
+      // On-demand revision references {{review.output.*}} (not {{content_review.output.*}})
+      const revisionConfig = revisionStep!.config as { prompt: string };
+      expect(revisionConfig.prompt).toContain("{{review.output.revisionInstructions}}");
+      expect(revisionConfig.prompt).not.toContain("{{content_review.output");
+      // publish_revised references {{revision.output}}
+      const publishRevisedConfig = publishRevisedStep!.config as { prompt: string };
+      expect(publishRevisedConfig.prompt).toContain("{{revision.output}}");
     });
 
     it("calculates topic priority correctly", () => {

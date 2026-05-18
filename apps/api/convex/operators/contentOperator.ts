@@ -553,7 +553,7 @@ Return a structured research summary.`,
           type: "agent",
           dependsOn: ["review_decision"],
           config: {
-            prompt: this.buildRevisionPrompt(),
+            prompt: this.buildRevisionPrompt("review"),
             modelTier: "generation",
             tools: ["perplexity.search", "llm.generate"],
             outputFormat: "markdown",
@@ -623,7 +623,7 @@ Return a structured research summary.`,
                 type: "agent" as const,
                 dependsOn: ["on_demand_approval"],
                 config: {
-                  prompt: this.buildPublishPrompt(),
+                  prompt: this.buildPublishPrompt("{{generate.output}}"),
                   modelTier: "fast" as const,
                   tools: ["composio.execute"],
                   outputFormat: "json" as const,
@@ -637,7 +637,7 @@ Return a structured research summary.`,
                 type: "agent" as const,
                 dependsOn: ["review_decision"],
                 config: {
-                  prompt: this.buildPublishPrompt(),
+                  prompt: this.buildPublishPrompt("{{generate.output}}"),
                   modelTier: "fast" as const,
                   tools: ["composio.execute"],
                   outputFormat: "json" as const,
@@ -761,14 +761,19 @@ Return JSON with: verdict, overallScore, scores (per dimension), issues (array),
   /**
    * Builds the revision prompt.
    */
-  buildRevisionPrompt(): string {
+  /**
+   * Builds the revision prompt.
+   * @param reviewStepId - The step ID whose output contains review feedback.
+   *   Defaults to "content_review" (weekly pipeline). Use "review" for on-demand.
+   */
+  buildRevisionPrompt(reviewStepId = "content_review"): string {
     return `Revise the content based on the review feedback.
 
 ## Review Feedback
-{{content_review.output.revisionInstructions}}
+{{${reviewStepId}.output.revisionInstructions}}
 
 ## Issues to Address
-{{content_review.output.issues}}
+{{${reviewStepId}.output.issues}}
 
 ## Instructions
 1. Address all "must_fix" issues
