@@ -234,13 +234,18 @@ describe("ContentOperator", () => {
       expect(workflow.name).toBe("Weekly Content Pipeline");
       expect(workflow.trigger.type).toBe("schedule");
       expect(workflow.steps.length).toBeGreaterThan(6);
-      // Verify revision path leads to publish
+      // Verify revision path leads to its own publish step
       const revisionStep = workflow.steps.find((s) => s.id === "revision");
+      const publishRevisedStep = workflow.steps.find((s) => s.id === "publish_revised");
       const publishStep = workflow.steps.find((s) => s.id === "publish");
       expect(revisionStep).toBeDefined();
+      expect(publishRevisedStep).toBeDefined();
       expect(publishStep).toBeDefined();
-      // Publish should depend on revision_approval (since approval is required in test config)
-      expect(publishStep!.dependsOn).toContain("revision_approval");
+      // Each publish step depends only on its own branch (no cross-branch deps)
+      expect(publishStep!.dependsOn).toContain("human_approval");
+      expect(publishStep!.dependsOn).not.toContain("revision_approval");
+      expect(publishRevisedStep!.dependsOn).toContain("revision_approval");
+      expect(publishRevisedStep!.dependsOn).not.toContain("human_approval");
     });
 
     it("builds on-demand workflow", () => {
@@ -515,10 +520,16 @@ describe("Content Analytics (8.2.6)", () => {
 
     it("includes comparison when previous period provided", () => {
       const records = createTestPerformanceRecords();
-      const report = generateReport(records, "30d", records);
+      // Create previous period records with different (lower) metrics
+      const previousRecords: ContentPerformanceRecord[] = records.map((r) => ({
+        ...r,
+        publishedAt: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString(), // 60 days ago
+        analytics: { ...r.analytics, views: Math.round(r.analytics.views * 0.7) },
+      }));
+      const report = generateReport(records, "30d", previousRecords);
 
       expect(report.comparison).toBeDefined();
-      expect(report.comparison!.viewsChange).toBeDefined();
+      expect(report.comparison!.viewsChange).toBeGreaterThan(0); // Current > previous
     });
   });
 });

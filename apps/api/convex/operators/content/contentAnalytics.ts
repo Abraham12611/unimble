@@ -225,7 +225,10 @@ export function generateReport(
   // Calculate comparison if previous period data available
   let comparison: ContentReport["comparison"];
   if (previousPeriodRecords && previousPeriodRecords.length > 0) {
-    const prevMetrics = aggregateMetrics(previousPeriodRecords, period);
+    // Use "all" period for previous records since they are already scoped
+    // to the prior window by the caller — re-applying the current period
+    // filter would discard them (they're older than the cutoff).
+    const prevMetrics = aggregateMetrics(previousPeriodRecords, "all");
     comparison = {
       viewsChange: prevMetrics.totalViews > 0
         ? ((metrics.totalViews - prevMetrics.totalViews) / prevMetrics.totalViews) * 100

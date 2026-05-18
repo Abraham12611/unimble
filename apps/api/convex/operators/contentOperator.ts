@@ -350,8 +350,7 @@ export class ContentOperator extends OperatorBase {
             maxTokens: 8192,
           },
         },
-        // Step 5a-2: Post-revision approval gate
-        // After revision, content goes to human approval (if required) or directly to publish
+        // Step 5a-2: Post-revision publish (with optional approval)
         ...(approvalRequired
           ? [
               {
@@ -366,9 +365,34 @@ export class ContentOperator extends OperatorBase {
                   timeoutAction: "skip" as const,
                 },
               },
+              {
+                id: "publish_revised",
+                name: "Publish Revised Content",
+                type: "agent" as const,
+                dependsOn: ["revision_approval"],
+                config: {
+                  prompt: this.buildPublishPrompt(),
+                  modelTier: "fast" as const,
+                  tools: ["composio.execute"],
+                  outputFormat: "json" as const,
+                },
+              },
             ]
-          : []),
-        // Step 5b: Human Approval (if configured — for first-pass approved content)
+          : [
+              {
+                id: "publish_revised",
+                name: "Publish Revised Content",
+                type: "agent" as const,
+                dependsOn: ["revision"],
+                config: {
+                  prompt: this.buildPublishPrompt(),
+                  modelTier: "fast" as const,
+                  tools: ["composio.execute"],
+                  outputFormat: "json" as const,
+                },
+              },
+            ]),
+        // Step 5b: First-pass approved content path
         ...(approvalRequired
           ? [
               {
@@ -383,23 +407,33 @@ export class ContentOperator extends OperatorBase {
                   timeoutAction: "skip" as const,
                 },
               },
+              {
+                id: "publish",
+                name: "Publish Content",
+                type: "agent" as const,
+                dependsOn: ["human_approval"],
+                config: {
+                  prompt: this.buildPublishPrompt(),
+                  modelTier: "fast" as const,
+                  tools: ["composio.execute"],
+                  outputFormat: "json" as const,
+                },
+              },
             ]
-          : []),
-        // Step 6: Publish — depends on whichever approval path was taken
-        {
-          id: "publish",
-          name: "Publish Content",
-          type: "agent",
-          dependsOn: approvalRequired
-            ? ["human_approval", "revision_approval"]
-            : ["review_decision", "revision"],
-          config: {
-            prompt: this.buildPublishPrompt(),
-            modelTier: "fast",
-            tools: ["composio.execute"],
-            outputFormat: "json",
-          },
-        },
+          : [
+              {
+                id: "publish",
+                name: "Publish Content",
+                type: "agent" as const,
+                dependsOn: ["review_decision"],
+                config: {
+                  prompt: this.buildPublishPrompt(),
+                  modelTier: "fast" as const,
+                  tools: ["composio.execute"],
+                  outputFormat: "json" as const,
+                },
+              },
+            ]),
         // Step 7: Notify failure
         {
           id: "notify_failure",
