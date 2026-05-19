@@ -103,6 +103,9 @@ export function analyzeExperiment(input: AnalysisInput): AnalysisOutput {
   if (!controlData) {
     throw new Error("Control variant data not found");
   }
+  if (controlData.samplesCollected === 0) {
+    throw new Error("Control variant has 0 samples — analysis cannot proceed");
+  }
 
   // Analyze each treatment vs control
   const variantMetrics: Record<string, VariantMetrics> = {};
@@ -142,7 +145,7 @@ export function analyzeExperiment(input: AnalysisInput): AnalysisOutput {
   // Treatment metrics
   for (const treatment of experiment.treatments) {
     const treatmentData = variantData[treatment.id];
-    if (!treatmentData) continue;
+    if (!treatmentData || treatmentData.samplesCollected === 0) continue;
 
     const treatmentRate = treatmentData.conversions / treatmentData.samplesCollected;
     const treatmentSE = Math.sqrt(

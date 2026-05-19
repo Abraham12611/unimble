@@ -330,7 +330,7 @@ export function evaluateEarlyStopping(
   const completionRatio = controlProgress.samplesCollected / controlProgress.targetSamples;
   const adjustedAlpha = baseAlpha * Math.sqrt(completionRatio);
 
-  // Check superiority
+  // Check superiority (one-sided test: treatment > control)
   if (bestTreatmentRate > controlRate) {
     const pooledRate =
       (controlProgress.conversions + bestTreatmentProgress.conversions) /
@@ -341,14 +341,19 @@ export function evaluateEarlyStopping(
         (1 / controlProgress.samplesCollected + 1 / bestTreatmentProgress.samplesCollected)
     );
     const z = se > 0 ? (bestTreatmentRate - controlRate) / se : 0;
-    const pValue = 1 - normalCDF(z);
+    // One-sided p-value (right tail)
+    const pValueOneSided = 1 - normalCDF(z);
 
-    if (pValue < adjustedAlpha) {
+    // Compare one-sided p-value against adjustedAlpha/2 to maintain
+    // consistency with the two-sided final analysis in analyzeExperiment.
+    // This ensures early stopping fires only when the two-sided p-value
+    // would also be below the adjusted threshold.
+    if (pValueOneSided < adjustedAlpha / 2) {
       return {
         shouldStop: true,
         reason: "superiority",
-        confidence: 1 - pValue,
-        explanation: `Treatment is significantly better (p=${pValue.toFixed(4)}, adjusted α=${adjustedAlpha.toFixed(4)})`,
+        confidence: 1 - 2 * pValueOneSided, // Convert to two-sided confidence
+        explanation: `Treatment is significantly better (p_two_sided=${(2 * pValueOneSided).toFixed(4)}, adjusted α=${adjustedAlpha.toFixed(4)})`,
       };
     }
   }
