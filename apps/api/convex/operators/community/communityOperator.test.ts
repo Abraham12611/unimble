@@ -162,11 +162,26 @@ describe("CommunityOperator", () => {
       });
       expect(CommunityOperator.shouldAutoApprove(lowRiskMention, settings)).toBe(true);
 
+      // Medium-priority positive mentions should also auto-approve
+      // (aligned with requiresApproval in engagementResponse.ts)
+      const mediumPositive = createTestMention({
+        priority: "medium",
+        sentiment: "positive",
+      });
+      expect(CommunityOperator.shouldAutoApprove(mediumPositive, settings)).toBe(true);
+
       const highRiskMention = createTestMention({
         priority: "high",
         sentiment: "negative",
       });
       expect(CommunityOperator.shouldAutoApprove(highRiskMention, settings)).toBe(false);
+
+      // Mixed sentiment should not auto-approve
+      const mixedMention = createTestMention({
+        priority: "low",
+        sentiment: "mixed",
+      });
+      expect(CommunityOperator.shouldAutoApprove(mixedMention, settings)).toBe(false);
     });
   });
 });
@@ -447,6 +462,13 @@ describe("GitHub Engagement", () => {
 
   it("should assess critical priority for production issues", () => {
     expect(assessIssuePriority("Production is down", "Critical outage", [])).toBe("critical");
+  });
+
+  it("should respect explicit critical label over content-based high", () => {
+    // "regression" matches the high-content pattern, but explicit label wins
+    expect(
+      assessIssuePriority("Regression in auth flow", "Auth is broken", ["priority: critical"])
+    ).toBe("critical");
   });
 
   it("should assess high priority for blocking issues", () => {

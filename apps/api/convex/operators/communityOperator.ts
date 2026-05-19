@@ -701,12 +701,13 @@ For each mention, return:
   ): boolean {
     if (!settings.autoRespondLowRisk) return false;
 
-    // Never auto-approve for negative sentiment or high priority
+    // Never auto-approve for negative sentiment or high/critical priority
     if (mention.sentiment === "negative") return false;
     if (mention.priority === "critical" || mention.priority === "high") return false;
 
-    // Auto-approve for positive/neutral low-priority mentions
-    return mention.priority === "low" && mention.sentiment !== "mixed";
+    // Auto-approve for non-critical, non-high, non-negative, non-mixed mentions
+    // This aligns with requiresApproval() in engagementResponse.ts
+    return mention.sentiment !== "mixed";
   }
 }
 
