@@ -145,10 +145,10 @@ export function calculateSampleSize(
   const zBeta = approximateZScore(power);
 
   const p1 = baselineRate;
-  const p2 = baselineRate * (1 + minimumDetectableEffect / 100);
+  const p2 = Math.min(1, baselineRate * (1 + minimumDetectableEffect / 100));
   const pBar = (p1 + p2) / 2;
 
-  if (p2 === p1) return Infinity; // No effect to detect
+  if (p2 <= p1) return Infinity; // No effect to detect or negative effect
 
   const numerator = Math.pow(
     zAlpha * Math.sqrt(2 * pBar * (1 - pBar)) + zBeta * Math.sqrt(p1 * (1 - p1) + p2 * (1 - p2)),

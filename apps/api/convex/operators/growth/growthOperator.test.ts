@@ -537,6 +537,78 @@ describe("Experiment Analysis", () => {
     expect(result.results.isSignificant).toBe(false);
     expect(result.results.winningVariant).toBeNull();
   });
+
+  it("should select significant winner over higher-lift non-significant treatment", () => {
+    const experiment = createTestExperiment();
+    // Add a second treatment
+    experiment.treatments.push({
+      id: "treat_2",
+      name: "Treatment B",
+      description: "Higher lift but not significant",
+      config: {},
+    });
+    experiment.targetSampleSize = 1000;
+
+    const result = analyzeExperiment({
+      experiment,
+      variantData: {
+        ctrl_1: {
+          variantId: "ctrl_1",
+          samplesCollected: 1000,
+          targetSamples: 1000,
+          completionPercent: 100,
+          metricValues: [],
+          conversions: 50, // 5%
+        },
+        treat_1: {
+          variantId: "treat_1",
+          samplesCollected: 1000,
+          targetSamples: 1000,
+          completionPercent: 100,
+          metricValues: [],
+          conversions: 75, // 7.5% — significant with large n
+        },
+        treat_2: {
+          variantId: "treat_2",
+          samplesCollected: 20, // very tiny sample
+          targetSamples: 1000,
+          completionPercent: 2,
+          metricValues: [],
+          conversions: 2, // 10% — higher lift but p-value won't be significant with n=20
+        },
+      },
+    });
+
+    // treat_1 should win because it's significant, even though treat_2 has higher lift
+    expect(result.results.isSignificant).toBe(true);
+    expect(result.results.winningVariant).toBe("treat_1");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Edge case: high baseline rate
+// ---------------------------------------------------------------------------
+
+describe("Edge Cases", () => {
+  it("should not produce NaN for high baseline rate with large MDE", () => {
+    // baseline 0.9 * (1 + 0.2) = 1.08 > 1.0 without clamping
+    const n = calculateSampleSize(0.9, 20, 0.95, 0.8);
+    expect(Number.isFinite(n)).toBe(true);
+    expect(n).toBeGreaterThan(0);
+  });
+
+  it("should return Infinity when MDE produces no detectable effect after clamping", () => {
+    // baseline 1.0 — can't go higher
+    const n = calculateSampleSize(1.0, 20, 0.95, 0.8);
+    expect(n).toBe(Infinity);
+  });
+
+  it("should handle GrowthOperator sample size with high baseline", () => {
+    const operator = new GrowthOperator();
+    const n = operator.calculateRequiredSampleSize(0.9, 20, 0.95, 0.8);
+    expect(Number.isFinite(n)).toBe(true);
+    expect(n).toBeGreaterThan(0);
+  });
 });
 
 // ---------------------------------------------------------------------------

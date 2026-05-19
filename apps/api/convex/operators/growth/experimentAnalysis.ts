@@ -107,9 +107,14 @@ export function analyzeExperiment(input: AnalysisInput): AnalysisOutput {
   // Analyze each treatment vs control
   const variantMetrics: Record<string, VariantMetrics> = {};
   const perVariantStats: Record<string, DetailedVariantStats> = {};
-  let bestTreatmentId: string | null = null;
-  let bestLift = -Infinity;
-  let overallPValue = 1;
+
+  // Track all treatment results for proper winner selection
+  const treatmentResults: Array<{
+    id: string;
+    lift: number;
+    pValue: number;
+    isSignificant: boolean;
+  }> = [];
 
   // Control metrics
   const controlRate = controlData.conversions / controlData.samplesCollected;
@@ -154,11 +159,13 @@ export function analyzeExperiment(input: AnalysisInput): AnalysisOutput {
 
     const lift = controlRate > 0 ? ((treatmentRate - controlRate) / controlRate) * 100 : 0;
 
-    if (lift > bestLift) {
-      bestLift = lift;
-      bestTreatmentId = treatment.id;
-      overallPValue = testResult.pValue;
-    }
+    const significanceAlpha = 1 - experiment.significanceThreshold;
+    treatmentResults.push({
+      id: treatment.id,
+      lift,
+      pValue: testResult.pValue,
+      isSignificant: testResult.pValue < significanceAlpha,
+    });
 
     variantMetrics[treatment.id] = {
       sampleSize: treatmentData.samplesCollected,
@@ -188,8 +195,25 @@ export function analyzeExperiment(input: AnalysisInput): AnalysisOutput {
     };
   }
 
-  const isSignificant = overallPValue < 1 - experiment.significanceThreshold;
-  const winningVariant = isSignificant && bestLift > 0 ? bestTreatmentId : null;
+  // Winner selection: prefer the best significant treatment with positive lift.
+  // If none are significant, report the highest-lift treatment for context.
+  const significantWinners = treatmentResults.filter((t) => t.isSignificant && t.lift > 0);
+  const bestSignificant =
+    significantWinners.length > 0
+      ? significantWinners.reduce((best, t) => (t.lift > best.lift ? t : best))
+      : null;
+
+  // Fallback: highest lift regardless of significance (for reporting)
+  const bestOverall =
+    treatmentResults.length > 0
+      ? treatmentResults.reduce((best, t) => (t.lift > best.lift ? t : best))
+      : null;
+
+  const winningResult = bestSignificant ?? bestOverall;
+  const isSignificant = bestSignificant !== null;
+  const winningVariant = isSignificant ? bestSignificant.id : null;
+  const overallPValue = winningResult?.pValue ?? 1;
+  const bestLift = winningResult?.lift ?? 0;
 
   // Calculate achieved power
   const achievedPower = calculateAchievedPower(
@@ -290,7 +314,7 @@ function calculateAchievedPower(
   const zAlpha = approximateZScore(1 - alpha / 2);
 
   const p1 = controlRate;
-  const p2 = controlRate * (1 + liftPercent / 100);
+  const p2 = Math.min(1, Math.max(0, controlRate * (1 + liftPercent / 100)));
   const se = Math.sqrt((p1 * (1 - p1)) / sampleSize + (p2 * (1 - p2)) / sampleSize);
 
   if (se === 0) return 0;
