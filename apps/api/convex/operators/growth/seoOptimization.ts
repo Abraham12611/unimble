@@ -386,7 +386,8 @@ export function parseRankedKeywordsResponse(
           keyword,
           position: position ?? null,
           previousPosition,
-          change: previousPosition && position ? previousPosition - position : 0,
+          change:
+            previousPosition !== null && position !== undefined ? previousPosition - position : 0,
           rankingUrl: (rankedElement?.serp_item as Record<string, unknown>)?.url as
             | string
             | undefined,

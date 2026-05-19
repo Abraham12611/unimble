@@ -204,6 +204,7 @@ export function initializeExecutionState(experiment: GrowthExperiment): Executio
 
 /**
  * Updates progress for a variant with new data.
+ * Returns a new state object without mutating the input.
  */
 export function updateVariantProgress(
   state: ExecutionState,
@@ -211,19 +212,27 @@ export function updateVariantProgress(
   newSamples: number,
   newConversions: number
 ): ExecutionState {
-  const progress = state.variantProgress[variantId];
-  if (!progress) {
+  const existing = state.variantProgress[variantId];
+  if (!existing) {
     return state;
   }
 
-  progress.samplesCollected += newSamples;
-  progress.conversions += newConversions;
-  progress.completionPercent = Math.min(
-    100,
-    (progress.samplesCollected / progress.targetSamples) * 100
-  );
+  const samplesCollected = existing.samplesCollected + newSamples;
+  const conversions = existing.conversions + newConversions;
+  const completionPercent = Math.min(100, (samplesCollected / existing.targetSamples) * 100);
 
-  return { ...state };
+  return {
+    ...state,
+    variantProgress: {
+      ...state.variantProgress,
+      [variantId]: {
+        ...existing,
+        samplesCollected,
+        conversions,
+        completionPercent,
+      },
+    },
+  };
 }
 
 /**
@@ -285,12 +294,24 @@ export function evaluateEarlyStopping(
 
   const controlRate = controlProgress.conversions / controlProgress.samplesCollected;
 
+  // Find the best-performing treatment variant
+  let bestTreatmentProgress: VariantProgress | null = null;
   let bestTreatmentRate = 0;
   for (let i = 1; i < variants.length; i++) {
     const rate = variants[i].conversions / variants[i].samplesCollected;
     if (rate > bestTreatmentRate) {
       bestTreatmentRate = rate;
+      bestTreatmentProgress = variants[i];
     }
+  }
+
+  if (!bestTreatmentProgress) {
+    return {
+      shouldStop: false,
+      reason: "none",
+      confidence: 0,
+      explanation: "No treatment variants found",
+    };
   }
 
   // Simplified O'Brien-Fleming: use stricter thresholds early
@@ -300,12 +321,12 @@ export function evaluateEarlyStopping(
   // Check superiority
   if (bestTreatmentRate > controlRate) {
     const pooledRate =
-      (controlProgress.conversions + variants[1].conversions) /
-      (controlProgress.samplesCollected + variants[1].samplesCollected);
+      (controlProgress.conversions + bestTreatmentProgress.conversions) /
+      (controlProgress.samplesCollected + bestTreatmentProgress.samplesCollected);
     const se = Math.sqrt(
       pooledRate *
         (1 - pooledRate) *
-        (1 / controlProgress.samplesCollected + 1 / variants[1].samplesCollected)
+        (1 / controlProgress.samplesCollected + 1 / bestTreatmentProgress.samplesCollected)
     );
     const z = se > 0 ? (bestTreatmentRate - controlRate) / se : 0;
     const pValue = 1 - normalCDF(z);

@@ -448,6 +448,22 @@ describe("Experiment Execution", () => {
     expect(state.variantProgress["ctrl_1"].conversions).toBe(5);
   });
 
+  it("should not mutate the original state", () => {
+    const experiment = createTestExperiment();
+    const original = initializeExecutionState(experiment);
+    const originalSamples = original.variantProgress["ctrl_1"].samplesCollected;
+
+    const updated = updateVariantProgress(original, "ctrl_1", 50, 3);
+
+    // Original must be unchanged
+    expect(original.variantProgress["ctrl_1"].samplesCollected).toBe(originalSamples);
+    // Updated has new values
+    expect(updated.variantProgress["ctrl_1"].samplesCollected).toBe(originalSamples + 50);
+    // They are different references
+    expect(updated).not.toBe(original);
+    expect(updated.variantProgress).not.toBe(original.variantProgress);
+  });
+
   it("should detect data collection completion", () => {
     const experiment = createTestExperiment();
     experiment.targetSampleSize = 10;
