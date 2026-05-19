@@ -230,6 +230,9 @@ export function requiresApproval(
     return true;
   }
 
+  // Always require approval for mixed sentiment (ambiguous tone needs human judgment)
+  if (mention.sentiment === "mixed") return true;
+
   // Auto-approve low-risk positive/neutral mentions
   return false;
 }

@@ -392,6 +392,15 @@ describe("Engagement Response", () => {
     expect(requiresApproval(mention, settings)).toBe(true);
   });
 
+  it("should require approval for mixed sentiment", () => {
+    const settings: CommunityOperatorSettings = {
+      ...DEFAULT_COMMUNITY_SETTINGS,
+      autoRespondLowRisk: true,
+    };
+    const mention = createTestMention({ priority: "low", sentiment: "mixed" });
+    expect(requiresApproval(mention, settings)).toBe(true);
+  });
+
   it("should enforce daily rate limits", () => {
     let tracker = createDailyTracker();
     expect(canPostResponse(tracker, "twitter", 2).allowed).toBe(true);
