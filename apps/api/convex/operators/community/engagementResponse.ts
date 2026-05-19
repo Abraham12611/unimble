@@ -219,9 +219,13 @@ export function requiresApproval(
   // Always require approval for negative sentiment
   if (mention.sentiment === "negative") return true;
 
-  // Always require approval for competitor mentions
+  // Always require approval for competitor mentions (word-boundary match)
   if (
-    settings.competitorNames.some((c) => mention.content.toLowerCase().includes(c.toLowerCase()))
+    settings.competitorNames.some((c) => {
+      const escaped = c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const pattern = new RegExp(`\\b${escaped}\\b`, "i");
+      return pattern.test(mention.content);
+    })
   ) {
     return true;
   }
@@ -311,18 +315,15 @@ export function recordResponse(
 export function formatForPlatform(content: string, platform: SocialPlatform): string {
   const constraints = PLATFORM_CONSTRAINTS[platform];
 
-  // Truncate if needed
-  if (content.length > constraints.maxLength) {
-    const truncated = content.slice(0, constraints.maxLength - 3) + "...";
-    return truncated;
+  // Strip markdown first if platform doesn't support it
+  let formatted = constraints.supportsMarkdown ? content : stripMarkdown(content);
+
+  // Then truncate if needed
+  if (formatted.length > constraints.maxLength) {
+    formatted = formatted.slice(0, constraints.maxLength - 3) + "...";
   }
 
-  // Strip markdown if platform doesn't support it
-  if (!constraints.supportsMarkdown) {
-    return stripMarkdown(content);
-  }
-
-  return content;
+  return formatted;
 }
 
 /**

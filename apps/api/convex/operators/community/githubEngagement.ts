@@ -265,7 +265,7 @@ A maintainer will review this soon. In the meantime:
 Thanks for contributing! 🎉`;
   }
 
-  return `Hey @${username}! 👋 Thanks for opening your first issue here!
+  return `Hey @${username}! 👋 Thanks for opening your first issue: **${title}**
 
 We appreciate you taking the time to report this. A maintainer will take a look soon.
 

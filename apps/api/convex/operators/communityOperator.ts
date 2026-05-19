@@ -356,8 +356,6 @@ Return JSON array of classified mentions with all fields populated.`,
    * Handles approval routing and posting of responses.
    */
   buildEngagementResponseWorkflow(): WorkflowDefinition {
-    const approvalRequired = this.config.approvalRequired;
-
     return {
       name: "Engagement Response",
       description: "Route responses for approval and post to platforms",
@@ -368,6 +366,9 @@ Return JSON array of classified mentions with all fields populated.`,
         enabled: true,
       },
       steps: [
+        // Route based on per-response requiresApproval flag.
+        // This always respects the per-response flag regardless of
+        // operator-level approvalRequired setting.
         {
           id: "route_responses",
           name: "Route Responses",
@@ -376,42 +377,40 @@ Return JSON array of classified mentions with all fields populated.`,
             conditions: [
               {
                 expression: "{{input.requiresApproval}} === true",
-                thenSteps: approvalRequired ? ["human_approval"] : ["auto_post"],
+                thenSteps: ["human_approval"],
               },
             ],
             elseSteps: ["auto_post"],
           },
         },
-        ...(approvalRequired
-          ? [
-              {
-                id: "human_approval",
-                name: "Human Approval",
-                type: "approval" as const,
-                dependsOn: ["route_responses"],
-                config: {
-                  contentRef: "{{input.responses}}",
-                  approvalType: "community_response",
-                  timeoutMs: 14400000, // 4 hours
-                  timeoutAction: "skip" as const,
-                },
-              },
-              {
-                id: "post_approved",
-                name: "Post Approved Responses",
-                type: "agent" as const,
-                dependsOn: ["human_approval"],
-                config: {
-                  prompt: `Post the approved community responses to their respective platforms.
+        // Approval path — always present so per-response flags are honored
+        {
+          id: "human_approval",
+          name: "Human Approval",
+          type: "approval",
+          dependsOn: ["route_responses"],
+          config: {
+            contentRef: "{{input.responses}}",
+            approvalType: "community_response",
+            timeoutMs: 14400000, // 4 hours
+            timeoutAction: "skip" as const,
+          },
+        },
+        {
+          id: "post_approved",
+          name: "Post Approved Responses",
+          type: "agent",
+          dependsOn: ["human_approval"],
+          config: {
+            prompt: `Post the approved community responses to their respective platforms.
 Use the appropriate API for each platform. Respect rate limits and platform-specific formatting.
 Return the posted URLs and any errors.`,
-                  modelTier: "fast" as const,
-                  tools: ["composio.execute"],
-                  outputFormat: "json" as const,
-                },
-              },
-            ]
-          : []),
+            modelTier: "fast",
+            tools: ["composio.execute"],
+            outputFormat: "json",
+          },
+        },
+        // Auto-post path — only reached via elseSteps (requiresApproval === false)
         {
           id: "auto_post",
           name: "Auto-Post Responses",

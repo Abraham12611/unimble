@@ -396,6 +396,17 @@ describe("Engagement Response", () => {
     expect(redditFormatted).toContain("**Bold**"); // Reddit supports markdown
   });
 
+  it("should strip markdown before truncating on non-markdown platforms", () => {
+    // Content with markdown that exceeds Twitter limit after stripping
+    const longMarkdown = "**Important**: " + "x".repeat(280);
+    const formatted = formatForPlatform(longMarkdown, "twitter");
+    // Should NOT contain raw markdown characters
+    expect(formatted).not.toContain("**");
+    // Should be truncated to 280 chars
+    expect(formatted.length).toBeLessThanOrEqual(280);
+    expect(formatted.endsWith("...")).toBe(true);
+  });
+
   it("should have correct platform constraints", () => {
     expect(PLATFORM_CONSTRAINTS.twitter.maxLength).toBe(280);
     expect(PLATFORM_CONSTRAINTS.reddit.supportsMarkdown).toBe(true);
@@ -466,6 +477,7 @@ describe("GitHub Engagement", () => {
   it("should build welcome message for issue", () => {
     const msg = buildWelcomeTemplate("newuser", "issue", "Bug report");
     expect(msg).toContain("@newuser");
+    expect(msg).toContain("Bug report");
     expect(msg).toContain("first issue");
   });
 
