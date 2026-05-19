@@ -261,15 +261,24 @@ export interface EarlyStopDecision {
 /**
  * Evaluates whether an experiment should be stopped early.
  *
- * Uses O'Brien-Fleming-like boundaries:
- * - Futility: If the treatment is very unlikely to beat control
- * - Superiority: If the treatment is clearly better and more data won't change the conclusion
+ * Uses O'Brien-Fleming-like spending function:
+ * - The boundary is STRICTEST early (requires very strong evidence)
+ *   and relaxes as more data accumulates toward the target sample size.
+ * - Formula: adjustedAlpha = baseAlpha * sqrt(completionRatio)
+ *   At 25% completion: threshold = alpha * 0.5 (very strict)
+ *   At 100% completion: threshold = alpha (normal significance level)
+ *
+ * Stopping rules:
+ * - Superiority: Treatment is clearly better with high confidence
+ * - Futility: Treatment is unlikely to catch up given remaining samples
  */
 export function evaluateEarlyStopping(
   state: ExecutionState,
-  minSamplesPerVariant: number
+  minSamplesPerVariant: number,
+  significanceThreshold = 0.95
 ): EarlyStopDecision {
   const variants = Object.values(state.variantProgress);
+  const baseAlpha = 1 - significanceThreshold;
 
   // Need minimum samples in all variants
   if (variants.some((v) => v.samplesCollected < minSamplesPerVariant)) {
@@ -314,9 +323,12 @@ export function evaluateEarlyStopping(
     };
   }
 
-  // Simplified O'Brien-Fleming: use stricter thresholds early
+  // O'Brien-Fleming spending function: strictest early, relaxes with more data.
+  // adjustedAlpha = baseAlpha * sqrt(completionRatio)
+  // At 25% data: adjustedAlpha = baseAlpha * 0.5 (very hard to stop)
+  // At 100% data: adjustedAlpha = baseAlpha (normal threshold)
   const completionRatio = controlProgress.samplesCollected / controlProgress.targetSamples;
-  const adjustedAlpha = 0.05 / Math.sqrt(completionRatio); // Spending function
+  const adjustedAlpha = baseAlpha * Math.sqrt(completionRatio);
 
   // Check superiority
   if (bestTreatmentRate > controlRate) {

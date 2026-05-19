@@ -339,9 +339,9 @@ export class GrowthOperator {
       this.seoTargets[existingIndex] = { ...this.seoTargets[existingIndex], ...target };
     } else {
       this.seoTargets.push(target);
+      this.metrics.custom["seo_targets_tracked"] =
+        (this.metrics.custom["seo_targets_tracked"] ?? 0) + 1;
     }
-    this.metrics.custom["seo_targets_tracked"] =
-      (this.metrics.custom["seo_targets_tracked"] ?? 0) + 1;
   }
 
   /** Removes a keyword from tracking. */
