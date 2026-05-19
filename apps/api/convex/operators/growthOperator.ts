@@ -1,8 +1,8 @@
 /**
  * Growth Operator — Autonomous Growth Experimentation
  *
- * Concrete operator for growth experiments, A/B testing, campaign
- * execution, and SEO/AEO optimization. Extends OperatorBase with:
+ * Self-contained operator for growth experiments, A/B testing, campaign
+ * execution, and SEO/AEO optimization. Provides:
  * - Experiment types (A/B content, distribution, messaging, timing)
  * - Hypothesis generation and experiment design workflows
  * - Experiment execution with data collection
@@ -13,9 +13,8 @@
  * Phase 8.3.1 — Growth Operator Core
  */
 
-import { OperatorBase } from "./operatorBase";
 import { operatorRegistry } from "./registry";
-import type { OperatorType, OperatorTemplate, OperatorConfiguration } from "./types";
+import type { OperatorType, OperatorTemplate } from "./types";
 import type { WorkflowDefinition } from "../engine/types";
 
 // ---------------------------------------------------------------------------
@@ -194,18 +193,20 @@ export const DEFAULT_GROWTH_SETTINGS: GrowthOperatorSettings = {
  * - AI search visibility monitoring
  * - Ranking change alerts
  */
-export class GrowthOperator extends OperatorBase {
+export class GrowthOperator {
   private experiments: Map<string, GrowthExperiment> = new Map();
   private seoTargets: SEOTarget[] = [];
+  private settings: GrowthOperatorSettings;
+  private metrics: { totalExecutions: number; custom: Record<string, number> };
 
-  constructor(config: OperatorConfiguration) {
-    super(config);
-    const settings = this.getSettings();
-    this.seoTargets = [...(settings.seoTargets ?? [])];
+  constructor(settings?: Partial<GrowthOperatorSettings>) {
+    this.settings = { ...DEFAULT_GROWTH_SETTINGS, ...settings };
+    this.seoTargets = [...(this.settings.seoTargets ?? [])];
+    this.metrics = { totalExecutions: 0, custom: {} };
   }
 
   // -------------------------------------------------------------------------
-  // Abstract method implementations
+  // Core methods
   // -------------------------------------------------------------------------
 
   getType(): OperatorType {
@@ -218,21 +219,20 @@ export class GrowthOperator extends OperatorBase {
 
   validateConfig(): { valid: boolean; errors: string[] } {
     const errors: string[] = [];
-    const settings = this.getSettings();
 
-    if (settings.maxConcurrentExperiments < 1) {
+    if (this.settings.maxConcurrentExperiments < 1) {
       errors.push("maxConcurrentExperiments must be at least 1");
     }
-    if (settings.defaultExperimentDurationDays < 1) {
+    if (this.settings.defaultExperimentDurationDays < 1) {
       errors.push("defaultExperimentDurationDays must be at least 1");
     }
     if (
-      settings.defaultSignificanceThreshold < 0.5 ||
-      settings.defaultSignificanceThreshold > 0.99
+      this.settings.defaultSignificanceThreshold < 0.5 ||
+      this.settings.defaultSignificanceThreshold > 0.99
     ) {
       errors.push("defaultSignificanceThreshold must be between 0.5 and 0.99");
     }
-    if (settings.availableChannels.length === 0) {
+    if (this.settings.availableChannels.length === 0) {
       errors.push("At least one channel must be configured");
     }
 
@@ -257,12 +257,11 @@ export class GrowthOperator extends OperatorBase {
   createExperiment(
     params: Omit<GrowthExperiment, "id" | "status" | "currentSampleSizes" | "priorityScore">
   ): GrowthExperiment {
-    const settings = this.getSettings();
     const activeCount = this.getActiveExperimentCount();
 
-    if (activeCount >= settings.maxConcurrentExperiments) {
+    if (activeCount >= this.settings.maxConcurrentExperiments) {
       throw new Error(
-        `Maximum concurrent experiments (${settings.maxConcurrentExperiments}) reached`
+        `Maximum concurrent experiments (${this.settings.maxConcurrentExperiments}) reached`
       );
     }
 
@@ -275,7 +274,8 @@ export class GrowthOperator extends OperatorBase {
     };
 
     this.experiments.set(experiment.id, experiment);
-    this.incrementMetric("experiments_created");
+    this.metrics.custom["experiments_created"] =
+      (this.metrics.custom["experiments_created"] ?? 0) + 1;
     return experiment;
   }
 
@@ -340,7 +340,8 @@ export class GrowthOperator extends OperatorBase {
     } else {
       this.seoTargets.push(target);
     }
-    this.incrementMetric("seo_targets_tracked");
+    this.metrics.custom["seo_targets_tracked"] =
+      (this.metrics.custom["seo_targets_tracked"] ?? 0) + 1;
   }
 
   /** Removes a keyword from tracking. */
@@ -406,12 +407,11 @@ export class GrowthOperator extends OperatorBase {
 
     const z = se === 0 ? 0 : (p2 - p1) / se;
     const pValue = 2 * (1 - this.normalCDF(Math.abs(z)));
-    const settings = this.getSettings();
 
     return {
       zScore: z,
       pValue,
-      isSignificant: pValue < 1 - settings.defaultSignificanceThreshold,
+      isSignificant: pValue < 1 - this.settings.defaultSignificanceThreshold,
     };
   }
 
@@ -421,7 +421,6 @@ export class GrowthOperator extends OperatorBase {
       confidence?: number;
     }
   ): number {
-    const settings = this.getSettings();
     const impactMap = { low: 0.3, medium: 0.6, high: 0.9 };
     const effortMap = { low: 0.9, medium: 0.6, high: 0.3 }; // Inverted: low effort = high score
 
@@ -430,22 +429,15 @@ export class GrowthOperator extends OperatorBase {
     const ease = effortMap[params.estimatedEffort];
 
     return (
-      impact * settings.iceWeights.impact +
-      confidence * settings.iceWeights.confidence +
-      ease * settings.iceWeights.ease
+      impact * this.settings.iceWeights.impact +
+      confidence * this.settings.iceWeights.confidence +
+      ease * this.settings.iceWeights.ease
     );
   }
 
   // -------------------------------------------------------------------------
   // Private helpers
   // -------------------------------------------------------------------------
-
-  private getSettings(): GrowthOperatorSettings {
-    return {
-      ...DEFAULT_GROWTH_SETTINGS,
-      ...(this.config.settings as Partial<GrowthOperatorSettings>),
-    };
-  }
 
   /** Approximate z-score for a given probability. */
   private zScore(p: number): number {
@@ -490,18 +482,17 @@ export class GrowthOperator extends OperatorBase {
 
   private buildExperimentDesignWorkflow(): WorkflowDefinition {
     return {
-      id: "growth_experiment_design",
       name: "Experiment Design",
       description: "Generates hypotheses, designs experiments with variants and metrics",
-      version: "1.0.0",
-      triggers: [{ type: "manual", inputSchema: {} }],
+      version: 1,
+      trigger: { type: "manual", inputSchema: {} },
       steps: [
         {
           id: "generate_hypotheses",
           name: "Generate Hypotheses",
           type: "agent",
           config: {
-            systemPrompt:
+            prompt:
               "You are a growth strategist. Analyze the provided data and generate testable hypotheses for growth experiments.",
             model: "openrouter/anthropic/claude-sonnet-4",
             tools: ["perplexity_search", "analytics_query"],
@@ -513,7 +504,7 @@ export class GrowthOperator extends OperatorBase {
           type: "agent",
           dependsOn: ["generate_hypotheses"],
           config: {
-            systemPrompt:
+            prompt:
               "Design a rigorous A/B experiment based on the hypothesis. Define control/treatment variants, primary/secondary metrics, sample size requirements, and duration.",
             model: "openrouter/anthropic/claude-sonnet-4",
             tools: ["sample_size_calculator"],
@@ -526,29 +517,27 @@ export class GrowthOperator extends OperatorBase {
           dependsOn: ["design_experiment"],
           config: {
             approvalType: "experiment_launch",
-            timeoutMs: 86400000, // 24 hours
+            timeoutMs: 86400000,
             timeoutAction: "cancel",
           },
         },
       ],
-      config: {},
     };
   }
 
   private buildExperimentExecutionWorkflow(): WorkflowDefinition {
     return {
-      id: "growth_experiment_execution",
       name: "Experiment Execution",
       description: "Runs approved experiments, distributes content variants, collects data",
-      version: "1.0.0",
-      triggers: [{ type: "event", eventType: "experiment.approved", enabled: true }],
+      version: 1,
+      trigger: { type: "event", eventType: "experiment.approved", enabled: true },
       steps: [
         {
           id: "setup_variants",
           name: "Setup Variants",
           type: "agent",
           config: {
-            systemPrompt:
+            prompt:
               "Set up the experiment variants for distribution. Create content variations, configure targeting, and prepare tracking.",
             model: "openrouter/anthropic/claude-sonnet-4",
             tools: ["content_create", "analytics_setup"],
@@ -560,8 +549,8 @@ export class GrowthOperator extends OperatorBase {
           type: "tool",
           dependsOn: ["setup_variants"],
           config: {
-            tool: "content_distribute",
-            inputs: { variants: "{{setup_variants.output.variants}}" },
+            toolName: "content_distribute",
+            params: { variants: "{{setup_variants.output.variants}}" },
           },
         },
         {
@@ -570,30 +559,27 @@ export class GrowthOperator extends OperatorBase {
           type: "wait",
           dependsOn: ["distribute_content"],
           config: {
-            waitType: "duration",
-            durationMs: 604800000, // 7 days default, overridden by experiment config
+            durationMs: 604800000, // 7 days default
           },
         },
       ],
-      config: {},
     };
   }
 
   private buildExperimentAnalysisWorkflow(): WorkflowDefinition {
     return {
-      id: "growth_experiment_analysis",
       name: "Experiment Analysis",
       description: "Analyzes experiment results, calculates significance, extracts learnings",
-      version: "1.0.0",
-      triggers: [{ type: "event", eventType: "experiment.data_collected", enabled: true }],
+      version: 1,
+      trigger: { type: "event", eventType: "experiment.data_collected", enabled: true },
       steps: [
         {
           id: "gather_metrics",
           name: "Gather Metrics",
           type: "tool",
           config: {
-            tool: "analytics_query",
-            inputs: { experimentId: "{{input.experimentId}}" },
+            toolName: "analytics_query",
+            params: { experimentId: "{{input.experimentId}}" },
           },
         },
         {
@@ -602,7 +588,7 @@ export class GrowthOperator extends OperatorBase {
           type: "agent",
           dependsOn: ["gather_metrics"],
           config: {
-            systemPrompt:
+            prompt:
               "Perform statistical analysis on the experiment data. Calculate p-values, confidence intervals, and determine if results are statistically significant. Use a two-proportion z-test for conversion metrics.",
             model: "openrouter/anthropic/claude-sonnet-4",
             tools: ["statistics_calculator"],
@@ -614,7 +600,7 @@ export class GrowthOperator extends OperatorBase {
           type: "agent",
           dependsOn: ["statistical_analysis"],
           config: {
-            systemPrompt:
+            prompt:
               "Based on the experiment results, extract actionable learnings. What worked? What didn't? What should we test next? Format as structured insights.",
             model: "openrouter/anthropic/claude-sonnet-4",
           },
@@ -625,39 +611,35 @@ export class GrowthOperator extends OperatorBase {
           type: "agent",
           dependsOn: ["extract_learnings"],
           config: {
-            systemPrompt:
+            prompt:
               "Generate a concise experiment report with results, statistical significance, key learnings, and next steps.",
             model: "openrouter/anthropic/claude-sonnet-4",
           },
         },
       ],
-      config: {},
     };
   }
 
   private buildSeoOptimizationWorkflow(): WorkflowDefinition {
     return {
-      id: "growth_seo_optimization",
       name: "SEO/AEO Optimization",
       description:
         "Keyword research, ranking tracking, content optimization, and AI search visibility",
-      version: "1.0.0",
-      triggers: [
-        {
-          type: "schedule",
-          cron: "0 6 * * MON,THU",
-          timezone: "UTC",
-          enabled: true,
-        },
-      ],
+      version: 1,
+      trigger: {
+        type: "schedule",
+        cron: "0 6 * * MON,THU",
+        timezone: "UTC",
+        enabled: true,
+      },
       steps: [
         {
           id: "check_rankings",
           name: "Check Rankings",
           type: "tool",
           config: {
-            tool: "dataforseo_ranked_keywords",
-            inputs: { targets: "{{config.seoTargets}}" },
+            toolName: "dataforseo_ranked_keywords",
+            params: { targets: "{{config.seoTargets}}" },
           },
         },
         {
@@ -666,7 +648,7 @@ export class GrowthOperator extends OperatorBase {
           type: "agent",
           dependsOn: ["check_rankings"],
           config: {
-            systemPrompt:
+            prompt:
               "Analyze current rankings and identify new keyword opportunities. Use DataForSEO for search volume, difficulty, and SERP features. Prioritize keywords with high volume and low difficulty.",
             model: "openrouter/anthropic/claude-sonnet-4",
             tools: [
@@ -682,8 +664,8 @@ export class GrowthOperator extends OperatorBase {
           type: "tool",
           dependsOn: ["check_rankings"],
           config: {
-            tool: "dataforseo_llm_mentions",
-            inputs: { targets: "{{config.seoTargets}}" },
+            toolName: "dataforseo_llm_mentions",
+            params: { targets: "{{config.seoTargets}}" },
           },
         },
         {
@@ -692,38 +674,34 @@ export class GrowthOperator extends OperatorBase {
           type: "agent",
           dependsOn: ["keyword_research", "aeo_visibility"],
           config: {
-            systemPrompt:
+            prompt:
               "Based on ranking data, keyword research, and AEO visibility, generate specific content optimization recommendations. Include on-page SEO fixes, new content ideas, and AI search optimization strategies.",
             model: "openrouter/anthropic/claude-sonnet-4",
           },
         },
       ],
-      config: {},
     };
   }
 
   private buildWeeklyReportWorkflow(): WorkflowDefinition {
     return {
-      id: "growth_weekly_report",
       name: "Weekly Growth Report",
       description: "Generates a weekly summary of growth metrics, experiments, and SEO performance",
-      version: "1.0.0",
-      triggers: [
-        {
-          type: "schedule",
-          cron: "0 9 * * MON",
-          timezone: "UTC",
-          enabled: true,
-        },
-      ],
+      version: 1,
+      trigger: {
+        type: "schedule",
+        cron: "0 9 * * MON",
+        timezone: "UTC",
+        enabled: true,
+      },
       steps: [
         {
           id: "gather_traffic",
           name: "Gather Traffic Data",
           type: "tool",
           config: {
-            tool: "analytics_query",
-            inputs: { period: "last_7_days", metrics: ["visitors", "sources"] },
+            toolName: "analytics_query",
+            params: { period: "last_7_days", metrics: "visitors,sources" },
           },
         },
         {
@@ -731,8 +709,8 @@ export class GrowthOperator extends OperatorBase {
           name: "Gather Experiment Data",
           type: "tool",
           config: {
-            tool: "internal_experiments_summary",
-            inputs: { period: "last_7_days" },
+            toolName: "internal_experiments_summary",
+            params: { period: "last_7_days" },
           },
         },
         {
@@ -740,8 +718,8 @@ export class GrowthOperator extends OperatorBase {
           name: "Gather SEO Data",
           type: "tool",
           config: {
-            tool: "dataforseo_ranked_keywords",
-            inputs: { targets: "{{config.seoTargets}}" },
+            toolName: "dataforseo_ranked_keywords",
+            params: { targets: "{{config.seoTargets}}" },
           },
         },
         {
@@ -750,13 +728,12 @@ export class GrowthOperator extends OperatorBase {
           type: "agent",
           dependsOn: ["gather_traffic", "gather_experiment_data", "gather_seo_data"],
           config: {
-            systemPrompt:
+            prompt:
               "Compile a weekly growth report. Include traffic trends, experiment results, SEO ranking changes, and 3-5 actionable recommendations for next week. Be concise and data-driven.",
             model: "openrouter/anthropic/claude-sonnet-4",
           },
         },
       ],
-      config: {},
     };
   }
 }
@@ -771,66 +748,163 @@ export const GROWTH_OPERATOR_TEMPLATE: OperatorTemplate = {
   version: "1.0.0",
   name: "Growth Operator",
   description: "Autonomous growth experimentation, A/B testing, and SEO/AEO optimization",
-  longDescription: `The Growth Operator runs autonomous growth experiments to optimize your content strategy, distribution channels, and search visibility.
-
-**Capabilities:**
-- Hypothesis generation from analytics data and competitor analysis
-- A/B experiment design with statistical rigor
-- Automated experiment execution and data collection
-- Statistical significance testing and result interpretation
-- SEO keyword research and ranking tracking
-- AEO (AI Engine Optimization) visibility monitoring
-- Weekly growth reports with actionable recommendations
-
-**Experiment Types:**
-- Content A/B tests (headlines, formats, topics)
-- Distribution channel experiments
-- Messaging and CTA optimization
-- Timing experiments (publish time, frequency)
-- Audience targeting tests
-- SEO/AEO experiments`,
-  tags: ["growth", "experiments", "seo", "aeo", "analytics", "ab-testing"],
-  defaultConfig: {
-    type: "growth",
-    name: "Growth Operator",
-    description: "Autonomous growth experimentation and SEO optimization",
-    requiredIntegrations: ["google_analytics", "google_search_console"],
-    optionalIntegrations: ["dataforseo", "semrush", "ahrefs"],
-    settings: DEFAULT_GROWTH_SETTINGS,
-    schedule: {
-      primaryCron: "0 9 * * MON",
-      timezone: "UTC",
-      enabled: true,
-      additionalCrons: [
-        {
-          name: "SEO Check",
-          cron: "0 6 * * MON,THU",
-          workflow: "growth_seo_optimization",
-        },
-      ],
+  icon: "chart-line-up",
+  featured: true,
+  capabilities: [
+    "Hypothesis generation from analytics and competitor data",
+    "A/B experiment design with statistical rigor",
+    "Automated experiment execution and data collection",
+    "Statistical significance testing and result interpretation",
+    "SEO keyword research and ranking tracking",
+    "AEO (AI Engine Optimization) visibility monitoring",
+    "Weekly growth reports with actionable recommendations",
+  ],
+  requiredIntegrations: [
+    {
+      category: "analytics",
+      providers: ["google_analytics"],
+      description: "Traffic and conversion data for experiment measurement",
     },
-    approvalGates: [
+    {
+      category: "search",
+      providers: ["google_search_console"],
+      description: "Search performance data for SEO tracking",
+    },
+  ],
+  optionalIntegrations: [
+    {
+      category: "seo",
+      providers: ["dataforseo", "semrush", "ahrefs"],
+      description: "Advanced keyword research and competitor analysis",
+    },
+  ],
+  configSchema: {
+    sections: [
       {
-        id: "experiment_launch",
-        name: "Approve Experiment Launch",
-        trigger: "before_execute",
-        approvers: "workspace_admin",
-        autoApproveAfterMs: null,
-        timeoutAction: "cancel",
+        id: "experiments",
+        title: "Experiment Settings",
+        fields: [
+          {
+            key: "maxConcurrentExperiments",
+            label: "Max Concurrent Experiments",
+            type: "number",
+            description: "Maximum number of experiments running simultaneously",
+            default: 3,
+            required: true,
+            validation: { min: 1, max: 10 },
+          },
+          {
+            key: "defaultExperimentDurationDays",
+            label: "Default Experiment Duration (days)",
+            type: "number",
+            description: "Default duration for new experiments",
+            default: 14,
+            required: true,
+            validation: { min: 7, max: 90 },
+          },
+          {
+            key: "defaultSignificanceThreshold",
+            label: "Significance Threshold",
+            type: "number",
+            description: "Statistical significance level (0.90 = 90%)",
+            default: 0.95,
+            validation: { min: 0.8, max: 0.99 },
+          },
+          {
+            key: "autoApproveLowRisk",
+            label: "Auto-approve Low Risk Experiments",
+            type: "boolean",
+            description: "Automatically approve experiments with low estimated risk",
+            default: false,
+          },
+        ],
+      },
+      {
+        id: "seo",
+        title: "SEO/AEO Settings",
+        fields: [
+          {
+            key: "targetDomain",
+            label: "Target Domain",
+            type: "text",
+            description: "Your domain to track rankings for",
+            required: true,
+            validation: { minLength: 3 },
+          },
+          {
+            key: "reportDay",
+            label: "Weekly Report Day",
+            type: "select",
+            description: "Day of week to generate the growth report",
+            default: "monday",
+            options: [
+              { value: "monday", label: "Monday" },
+              { value: "tuesday", label: "Tuesday" },
+              { value: "wednesday", label: "Wednesday" },
+              { value: "thursday", label: "Thursday" },
+              { value: "friday", label: "Friday" },
+            ],
+          },
+        ],
       },
     ],
-    notifications: {
-      onSuccess: false,
-      onFailure: true,
-      onApprovalNeeded: true,
-      weeklySummary: true,
-      channels: ["in_app", "email"],
-    },
   },
-  defaultWorkflows: [],
-  requiredIntegrations: ["google_analytics", "google_search_console"],
-  icon: "chart-line-up",
-  isOfficial: true,
+  defaultSystemPrompt:
+    "You are a growth strategist and data analyst. You design, execute, and analyze growth experiments with statistical rigor. You track SEO/AEO performance and provide actionable recommendations based on data.",
+  defaultTools: [
+    "perplexity_search",
+    "dataforseo_keyword_overview",
+    "dataforseo_ranked_keywords",
+    "dataforseo_llm_mentions",
+    "analytics_query",
+  ],
+  defaultWorkflows: [
+    {
+      id: "experiment_design",
+      name: "Experiment Design",
+      description: "Generate hypotheses and design A/B experiments",
+      triggerType: "api",
+      enabledByDefault: true,
+    },
+    {
+      id: "experiment_execution",
+      name: "Experiment Execution",
+      description: "Run approved experiments and collect data",
+      triggerType: "event",
+      enabledByDefault: true,
+    },
+    {
+      id: "experiment_analysis",
+      name: "Experiment Analysis",
+      description: "Analyze results and extract learnings",
+      triggerType: "event",
+      enabledByDefault: true,
+    },
+    {
+      id: "seo_optimization",
+      name: "SEO/AEO Optimization",
+      description: "Track rankings, research keywords, monitor AI visibility",
+      triggerType: "cron",
+      defaultCron: "0 6 * * MON,THU",
+      enabledByDefault: true,
+    },
+    {
+      id: "weekly_report",
+      name: "Weekly Growth Report",
+      description: "Compile traffic, experiment, and SEO data into a report",
+      triggerType: "cron",
+      defaultCron: "0 9 * * MON",
+      enabledByDefault: true,
+    },
+  ],
+  metrics: [
+    { key: "experiments_created", name: "Experiments Created", type: "counter" },
+    { key: "experiments_completed", name: "Experiments Completed", type: "counter" },
+    { key: "experiment_win_rate", name: "Experiment Win Rate", type: "percentage", goal: "> 30%" },
+    { key: "keywords_tracked", name: "Keywords Tracked", type: "gauge" },
+    { key: "avg_position", name: "Average Position", type: "gauge", goal: "< 10" },
+    { key: "aeo_visibility", name: "AEO Visibility Score", type: "percentage", goal: "> 50%" },
+  ],
 };
 
 // Register on module load

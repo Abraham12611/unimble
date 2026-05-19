@@ -13,7 +13,7 @@
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { GrowthOperator, DEFAULT_GROWTH_SETTINGS } from "../growthOperator";
-import type { OperatorConfiguration } from "../types";
+import type { GrowthOperatorSettings } from "../growthOperator";
 import {
   calculateSampleSize,
   estimateDuration,
@@ -46,14 +46,8 @@ import type { GrowthExperiment } from "../growthOperator";
 // Test fixtures
 // ---------------------------------------------------------------------------
 
-function createTestConfig(): OperatorConfiguration {
-  return {
-    type: "growth",
-    name: "Test Growth Operator",
-    description: "Test instance",
-    requiredIntegrations: ["google_analytics", "google_search_console"],
-    settings: { ...DEFAULT_GROWTH_SETTINGS },
-  };
+function createTestConfig(): Partial<GrowthOperatorSettings> {
+  return { ...DEFAULT_GROWTH_SETTINGS };
 }
 
 function createTestExperiment(): GrowthExperiment {
@@ -112,13 +106,11 @@ describe("GrowthOperator", () => {
     });
 
     it("should reject invalid config", () => {
-      const badConfig = createTestConfig();
-      badConfig.settings = {
+      const badOperator = new GrowthOperator({
         ...DEFAULT_GROWTH_SETTINGS,
         maxConcurrentExperiments: 0,
         availableChannels: [],
-      };
-      const badOperator = new GrowthOperator(badConfig);
+      });
       const result = badOperator.validateConfig();
       expect(result.valid).toBe(false);
       expect(result.errors.length).toBeGreaterThan(0);
@@ -127,9 +119,9 @@ describe("GrowthOperator", () => {
     it("should return default workflows", () => {
       const workflows = operator.getDefaultWorkflows();
       expect(workflows.length).toBe(5);
-      expect(workflows.map((w) => w.id)).toContain("growth_experiment_design");
-      expect(workflows.map((w) => w.id)).toContain("growth_seo_optimization");
-      expect(workflows.map((w) => w.id)).toContain("growth_weekly_report");
+      expect(workflows.map((w) => w.name)).toContain("Experiment Design");
+      expect(workflows.map((w) => w.name)).toContain("SEO/AEO Optimization");
+      expect(workflows.map((w) => w.name)).toContain("Weekly Growth Report");
     });
   });
 
@@ -160,9 +152,7 @@ describe("GrowthOperator", () => {
     });
 
     it("should enforce max concurrent experiments", () => {
-      const config = createTestConfig();
-      config.settings = { ...DEFAULT_GROWTH_SETTINGS, maxConcurrentExperiments: 1 };
-      const op = new GrowthOperator(config);
+      const op = new GrowthOperator({ maxConcurrentExperiments: 1 });
 
       op.createExperiment({
         name: "First",

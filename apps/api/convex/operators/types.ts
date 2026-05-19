@@ -1,20 +1,25 @@
 /**
- * Operator Framework — Shared Type Definitions
+ * Operator Framework — Type Definitions
  *
- * Defines the TypeScript types for operator configuration, templates,
- * lifecycle, and metadata. Used by all concrete operator implementations.
+ * Defines the types for the operator system:
+ * - Operator templates (pre-built configurations)
+ * - Operator configuration schemas
+ * - Operator lifecycle states
+ * - Operator metrics and goals
  *
- * Phase 8.1.1 — Operator Base Class Types
+ * Operators are the user-facing abstraction that packages
+ * agents, workflows, integrations, and memory into a
+ * deployable unit. Users deploy operators; operators
+ * internally create workflows and run agents.
+ *
+ * Phase 8.1 — Operator Framework
  */
 
-import type { WorkflowDefinition } from "../engine/types";
-
 // ---------------------------------------------------------------------------
-// Operator lifecycle
+// Operator Types
 // ---------------------------------------------------------------------------
 
-export type OperatorStatus = "draft" | "deploying" | "active" | "paused" | "error" | "archived";
-
+/** Built-in operator types. */
 export type OperatorType =
   | "content"
   | "growth"
@@ -23,174 +28,241 @@ export type OperatorType =
   | "documentation"
   | "custom";
 
+/** Operator lifecycle status. */
+export type OperatorStatus = "deploying" | "active" | "paused" | "error" | "archived";
+
+/** Trigger types for operator workflows. */
+export type WorkflowTriggerType = "cron" | "webhook" | "event" | "api" | "continuous";
+
 // ---------------------------------------------------------------------------
-// Operator configuration
+// Operator Configuration
 // ---------------------------------------------------------------------------
 
-/** Configuration schema for an operator instance. */
+/** A single setting field in an operator's configuration schema. */
+export interface OperatorSettingField {
+  /** Field key */
+  key: string;
+  /** Display label */
+  label: string;
+  /** Field type */
+  type: "text" | "textarea" | "number" | "boolean" | "select" | "multiselect" | "tags" | "file";
+  /** Description/help text */
+  description?: string;
+  /** Default value */
+  default?: unknown;
+  /** Whether this field is required */
+  required?: boolean;
+  /** Options for select/multiselect */
+  options?: Array<{ value: string; label: string }>;
+  /** Validation constraints */
+  validation?: {
+    min?: number;
+    max?: number;
+    minLength?: number;
+    maxLength?: number;
+    pattern?: string;
+  };
+}
+
+/** Configuration schema for an operator template. */
+export interface OperatorConfigSchema {
+  /** Settings grouped by section */
+  sections: Array<{
+    id: string;
+    title: string;
+    description?: string;
+    fields: OperatorSettingField[];
+  }>;
+}
+
+/** Resolved operator configuration (user's actual values). */
 export interface OperatorConfiguration {
   /** Operator type */
   type: OperatorType;
-  /** Human-readable name */
-  name: string;
-  /** Description of what this operator does */
-  description?: string;
-  /** Schedule configuration (cron expressions) */
-  schedule?: OperatorSchedule;
-  /** Integration slugs this operator requires */
-  requiredIntegrations: string[];
-  /** Optional integration slugs that enhance functionality */
-  optionalIntegrations?: string[];
-  /** Operator-specific settings (varies by type) */
+  /** User-provided settings values */
   settings: Record<string, unknown>;
-  /** Approval gates configuration */
-  approvalGates?: ApprovalGateConfig[];
-  /** Notification preferences */
-  notifications?: NotificationConfig;
+  /** Connected integrations */
+  integrations: OperatorIntegrationConfig[];
+  /** Workflow schedules */
+  schedules: OperatorScheduleConfig[];
+  /** Persona configuration (optional) */
+  persona?: string;
+  /** Whether human approval is required */
+  approvalRequired: boolean;
 }
 
-/** Schedule for operator execution. */
-export interface OperatorSchedule {
-  /** Primary execution cron (e.g., "0 9 * * MON" for weekly Monday 9am) */
-  primaryCron?: string;
-  /** Additional scheduled tasks */
-  additionalCrons?: Array<{ name: string; cron: string; workflow: string }>;
-  /** Timezone for cron evaluation */
+/** Integration connection for an operator. */
+export interface OperatorIntegrationConfig {
+  /** Integration provider (e.g., "wordpress", "twitter") */
+  provider: string;
+  /** Integration ID in the integrations table */
+  integrationId?: string;
+  /** Whether this integration is required */
+  required: boolean;
+  /** Category (e.g., "cms", "social", "analytics") */
+  category: string;
+}
+
+/** Schedule configuration for an operator workflow. */
+export interface OperatorScheduleConfig {
+  /** Workflow ID */
+  workflowId: string;
+  /** Cron expression */
+  cron: string;
+  /** Timezone */
   timezone: string;
-  /** Whether scheduling is enabled */
+  /** Whether this schedule is enabled */
   enabled: boolean;
 }
 
-/** Approval gate configuration. */
-export interface ApprovalGateConfig {
-  /** Gate identifier */
-  id: string;
-  /** Human-readable name */
-  name: string;
-  /** When this gate triggers */
-  trigger: "before_publish" | "before_execute" | "high_cost" | "custom";
-  /** Who can approve */
-  approvers: "workspace_owner" | "workspace_admin" | "any_member";
-  /** Auto-approve after timeout (ms), null = wait forever */
-  autoApproveAfterMs?: number | null;
-  /** Action on timeout if no auto-approve */
-  timeoutAction?: "cancel" | "escalate";
-}
-
-/** Notification configuration. */
-export interface NotificationConfig {
-  /** Notify on successful execution */
-  onSuccess: boolean;
-  /** Notify on failure */
-  onFailure: boolean;
-  /** Notify when approval is needed */
-  onApprovalNeeded: boolean;
-  /** Weekly summary report */
-  weeklySummary: boolean;
-  /** Channels to notify */
-  channels: Array<"email" | "slack" | "discord" | "in_app">;
-}
-
 // ---------------------------------------------------------------------------
-// Operator template (for the registry/marketplace)
+// Operator Template
 // ---------------------------------------------------------------------------
 
-/** Template for deploying an operator. */
+/** A pre-built operator template that users can deploy. */
 export interface OperatorTemplate {
   /** Unique template ID */
   id: string;
   /** Operator type */
   type: OperatorType;
-  /** Template version (semver) */
-  version: string;
-  /** Human-readable name */
+  /** Display name */
   name: string;
   /** Short description */
   description: string;
-  /** Long description (markdown) */
-  longDescription?: string;
-  /** Category tags */
-  tags: string[];
-  /** Default configuration */
-  defaultConfig: OperatorConfiguration;
-  /** Default workflows this operator creates */
-  defaultWorkflows: WorkflowDefinition[];
-  /** Required integrations for this template */
-  requiredIntegrations: string[];
   /** Icon identifier */
   icon: string;
-  /** Whether this is an official Unimble template */
-  isOfficial: boolean;
+  /** Version */
+  version: string;
+  /** Whether this is a popular/featured template */
+  featured?: boolean;
+  /** Capabilities list (for display) */
+  capabilities: string[];
+  /** Required integrations (by category) */
+  requiredIntegrations: Array<{
+    category: string;
+    providers: string[];
+    description: string;
+  }>;
+  /** Optional integrations */
+  optionalIntegrations: Array<{
+    category: string;
+    providers: string[];
+    description: string;
+  }>;
+  /** Configuration schema */
+  configSchema: OperatorConfigSchema;
+  /** Default system prompt for the operator's agent */
+  defaultSystemPrompt: string;
+  /** Default tools available to this operator */
+  defaultTools: string[];
+  /** Default workflows this operator creates */
+  defaultWorkflows: OperatorWorkflowTemplate[];
+  /** Metrics this operator tracks */
+  metrics: OperatorMetricDefinition[];
+}
+
+/** Template for a workflow that an operator creates on deployment. */
+export interface OperatorWorkflowTemplate {
+  /** Workflow ID (unique within the operator) */
+  id: string;
+  /** Display name */
+  name: string;
+  /** Description */
+  description: string;
+  /** Trigger type */
+  triggerType: WorkflowTriggerType;
+  /** Default cron schedule (if triggerType is "cron") */
+  defaultCron?: string;
+  /** Whether this workflow is enabled by default */
+  enabledByDefault: boolean;
+}
+
+/** Definition of a metric an operator tracks. */
+export interface OperatorMetricDefinition {
+  /** Metric key */
+  key: string;
+  /** Display name */
+  name: string;
+  /** Metric type */
+  type: "counter" | "gauge" | "percentage" | "duration";
+  /** Goal description (e.g., "> 3 minutes", "2 per week") */
+  goal?: string;
+  /** Data source */
+  source?: string;
 }
 
 // ---------------------------------------------------------------------------
-// Operator metrics
+// Operator Runtime State
 // ---------------------------------------------------------------------------
 
-/** Runtime metrics for an operator instance. */
+/** Runtime metrics for a deployed operator. */
 export interface OperatorMetrics {
-  /** Total workflow executions */
+  /** Total executions */
   totalExecutions: number;
   /** Successful executions */
   successfulExecutions: number;
   /** Failed executions */
   failedExecutions: number;
   /** Total cost (USD) */
-  totalCostUsd: number;
-  /** Average execution duration (ms) */
-  avgDurationMs: number;
+  totalCost: number;
   /** Last execution timestamp */
   lastExecutionAt?: number;
-  /** Custom metrics (operator-specific) */
+  /** Next scheduled execution timestamp */
+  nextExecutionAt?: number;
+  /** Custom metric values */
   custom: Record<string, number>;
 }
 
-// ---------------------------------------------------------------------------
-// Operator memory
-// ---------------------------------------------------------------------------
-
-/** Long-term memory for an operator instance. */
-export interface OperatorMemory {
-  /** Learnings extracted from past executions */
-  learnings: OperatorLearning[];
-  /** Preferences refined over time */
-  preferences: Record<string, unknown>;
-  /** Historical context (last N execution summaries) */
-  executionHistory: ExecutionSummary[];
-  /** Custom memory entries (operator-specific) */
-  custom: Record<string, unknown>;
+/** Operator memory state (persisted learnings). */
+export interface OperatorMemoryState {
+  /** Learned preferences and patterns */
+  learnings: Array<{
+    key: string;
+    value: string;
+    source: "learned" | "manual" | "imported";
+    createdAt: number;
+    updatedAt: number;
+  }>;
 }
 
-/** A learning extracted from operator execution. */
-export interface OperatorLearning {
-  /** Learning ID */
-  id: string;
-  /** What was learned */
-  insight: string;
-  /** Confidence (0-1) */
-  confidence: number;
-  /** When this was learned */
-  learnedAt: number;
-  /** Source execution ID */
-  sourceExecutionId?: string;
-  /** Category */
-  category: string;
+// ---------------------------------------------------------------------------
+// Deployment
+// ---------------------------------------------------------------------------
+
+/** Input for deploying a new operator. */
+export interface DeployOperatorInput {
+  /** Workspace ID */
+  workspaceId: string;
+  /** Template ID to deploy from */
+  templateId: string;
+  /** Custom name (overrides template default) */
+  name?: string;
+  /** Custom icon */
+  icon?: string;
+  /** Custom persona prompt */
+  persona?: string;
+  /** User-provided settings */
+  settings: Record<string, unknown>;
+  /** Connected integration IDs */
+  integrations: Array<{ provider: string; integrationId: string }>;
+  /** Schedule overrides */
+  schedules?: Array<{ workflowId: string; cron: string; timezone: string; enabled: boolean }>;
+  /** Whether approval is required */
+  approvalRequired?: boolean;
 }
 
-/** Summary of a past execution. */
-export interface ExecutionSummary {
-  /** Execution ID */
-  executionId: string;
-  /** Workflow name */
-  workflowName: string;
-  /** Outcome */
-  outcome: "success" | "failure" | "partial";
-  /** Duration (ms) */
-  durationMs: number;
-  /** Cost (USD) */
-  costUsd: number;
-  /** Key outputs */
-  outputs: Record<string, unknown>;
-  /** Timestamp */
-  completedAt: number;
+/** Result of deploying an operator. */
+export interface DeployOperatorResult {
+  /** Created operator ID */
+  operatorId: string;
+  /** Created workflow IDs */
+  workflowIds: string[];
+  /** Any warnings during deployment */
+  warnings: string[];
+}
+
+/** Validation error during deployment. */
+export interface DeploymentValidationError {
+  field: string;
+  message: string;
 }
