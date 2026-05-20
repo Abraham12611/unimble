@@ -434,19 +434,22 @@ describe("Feedback Synthesis", () => {
         category: "feature_request",
         content: "Please add dark mode to the dashboard",
         summary: "Add dark mode",
-        themes: ["dark", "mode", "dashboard"],
+        themes: ["dark mode", "dashboard"],
       }),
       createTestFeedbackItem({
         id: "2",
         category: "feature_request",
         content: "Would love dark mode support",
         summary: "Dark mode support",
-        themes: ["dark", "mode"],
+        themes: ["dark mode"],
       }),
     ];
     const requests = groupFeatureRequests(items);
-    // Both should be grouped into one request (theme overlap)
-    expect(requests.length).toBeGreaterThanOrEqual(1);
+    // Both should be merged into one request (word overlap from themes)
+    expect(requests).toHaveLength(1);
+    expect(requests[0].requestCount).toBe(2);
+    expect(requests[0].feedbackIds).toContain("1");
+    expect(requests[0].feedbackIds).toContain("2");
   });
 
   it("should calculate feature priority score", () => {

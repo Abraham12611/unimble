@@ -83,16 +83,25 @@ function findMatchingRequest(
   requests: FeatureRequest[]
 ): FeatureRequest | null {
   for (const req of requests) {
-    // Check if any themes overlap
-    const reqThemes = new Set(req.title.toLowerCase().split(/\s+/));
-    const itemThemes = new Set(item.themes.map((t) => t.toLowerCase()));
+    // Split both title and themes into individual words for comparison.
+    // item.themes may contain multi-word phrases (e.g., "dark mode"),
+    // so we split them into words to match against title words.
+    const reqWords = new Set(
+      req.title
+        .toLowerCase()
+        .split(/\s+/)
+        .filter((w) => w.length > 2)
+    );
+    const itemWords = new Set(
+      item.themes.flatMap((t) => t.toLowerCase().split(/\s+/)).filter((w) => w.length > 2)
+    );
 
     let overlap = 0;
-    for (const theme of itemThemes) {
-      if (reqThemes.has(theme)) overlap++;
+    for (const word of itemWords) {
+      if (reqWords.has(word)) overlap++;
     }
 
-    // If significant overlap or content similarity
+    // If significant word overlap or content similarity
     if (overlap >= 2 || contentSimilarity(item.content, req.description) > 0.6) {
       return req;
     }
