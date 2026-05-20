@@ -447,7 +447,9 @@ Return JSON with scores, verdict, and revision instructions if needed.`,
           id: "publish",
           name: "Publish Documentation",
           type: "agent",
-          dependsOn: ["review_gate"],
+          // No dependsOn — execution is controlled solely by review_gate's
+          // thenSteps: ["publish"]. This prevents DAG-based engines from
+          // firing publish unconditionally on review_gate completion.
           config: {
             prompt: `Publish the approved documentation:
 1. Format for the target platform (docs site, GitHub, etc.)
