@@ -242,6 +242,18 @@ describe("Feedback Collection", () => {
     expect(result.isDuplicate).toBe(false);
   });
 
+  it("should not flag short text items as duplicates (empty word set edge case)", () => {
+    // Both items produce empty word sets after filtering (words <= 3 chars)
+    const newItem: RawFeedback = {
+      source: "in_app_feedback",
+      content: "Bug",
+      timestamp: Date.now(),
+    };
+    const existing = [{ id: "fb_4", content: "Fix it", source: "in_app_feedback" as const }];
+    const result = checkDuplicate(newItem, existing);
+    expect(result.isDuplicate).toBe(false);
+  });
+
   it("should extract NPS score from content", () => {
     expect(extractNpsScore("Score: 9/10. Great product!")).toBe(9);
     expect(extractNpsScore("NPS: 3")).toBe(3);
@@ -343,6 +355,38 @@ describe("Feedback Analysis", () => {
     expect(themes.length).toBe(1); // Only "login" has 3+ mentions
     expect(themes[0].name).toBe("login");
     expect(themes[0].frequency).toBe(3);
+  });
+
+  it("should detect rising trend when recent items outnumber older ones", () => {
+    const now = Date.now();
+    const items: FeedbackItem[] = [
+      // 1 old item
+      createTestFeedbackItem({ themes: ["perf"], id: "1", ingestedAt: now - 86400000 * 10 }),
+      // 4 recent items (in the recent half of the time range)
+      createTestFeedbackItem({ themes: ["perf"], id: "2", ingestedAt: now - 86400000 * 2 }),
+      createTestFeedbackItem({ themes: ["perf"], id: "3", ingestedAt: now - 86400000 * 1 }),
+      createTestFeedbackItem({ themes: ["perf"], id: "4", ingestedAt: now }),
+      createTestFeedbackItem({ themes: ["perf"], id: "5", ingestedAt: now }),
+    ];
+    const themes = extractThemes(items, 3);
+    expect(themes.length).toBe(1);
+    expect(themes[0].trend).toBe("rising");
+  });
+
+  it("should detect declining trend when older items outnumber recent ones", () => {
+    const now = Date.now();
+    const items: FeedbackItem[] = [
+      // 4 old items
+      createTestFeedbackItem({ themes: ["old"], id: "1", ingestedAt: now - 86400000 * 10 }),
+      createTestFeedbackItem({ themes: ["old"], id: "2", ingestedAt: now - 86400000 * 9 }),
+      createTestFeedbackItem({ themes: ["old"], id: "3", ingestedAt: now - 86400000 * 8 }),
+      createTestFeedbackItem({ themes: ["old"], id: "4", ingestedAt: now - 86400000 * 7 }),
+      // 1 recent item
+      createTestFeedbackItem({ themes: ["old"], id: "5", ingestedAt: now }),
+    ];
+    const themes = extractThemes(items, 3);
+    expect(themes.length).toBe(1);
+    expect(themes[0].trend).toBe("declining");
   });
 
   it("should detect feature area from content", () => {

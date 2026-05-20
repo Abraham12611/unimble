@@ -296,7 +296,7 @@ function extractWordSet(text: string): Set<string> {
  * Calculates Jaccard similarity between two word sets.
  */
 function jaccardSimilarity(setA: Set<string>, setB: Set<string>): number {
-  if (setA.size === 0 && setB.size === 0) return 1;
+  // If either set is empty, similarity is 0 (cannot determine similarity from no data)
   if (setA.size === 0 || setB.size === 0) return 0;
 
   let intersection = 0;

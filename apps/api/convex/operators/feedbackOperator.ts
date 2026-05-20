@@ -22,6 +22,10 @@ import type { AgentConfig } from "../agent/types";
 import type { Persona } from "../agent/personas";
 import { getDefaultPersona } from "../agent/personas";
 import type { WorkflowDefinition } from "../engine/types";
+import {
+  calculatePriority as calculatePriorityImpl,
+  sentimentToScore as sentimentToScoreImpl,
+} from "./feedback/feedbackAnalysis";
 
 // ---------------------------------------------------------------------------
 // Feedback-specific types
@@ -595,6 +599,7 @@ Return JSON array of raw feedback items with: source, content, author, authorTie
 
   /**
    * Calculates priority score for a feedback item.
+   * Delegates to feedbackAnalysis.calculatePriority for single source of truth.
    */
   static calculatePriority(
     sentiment: FeedbackSentiment,
@@ -602,62 +607,15 @@ Return JSON array of raw feedback items with: source, content, author, authorTie
     authorTier?: string,
     frequency = 1
   ): FeedbackPriority {
-    let score = 0;
-
-    // Sentiment weight
-    const sentimentScores: Record<FeedbackSentiment, number> = {
-      very_negative: 4,
-      negative: 3,
-      neutral: 1,
-      positive: 0,
-      very_positive: 0,
-    };
-    score += sentimentScores[sentiment];
-
-    // Category weight
-    const categoryScores: Record<FeedbackCategory, number> = {
-      bug: 3,
-      security: 4,
-      performance: 3,
-      feature_request: 1,
-      usability: 2,
-      onboarding: 2,
-      documentation: 1,
-      pricing: 2,
-      integration: 2,
-      other: 1,
-    };
-    score += categoryScores[category];
-
-    // Author tier weight
-    if (authorTier === "enterprise") score += 3;
-    else if (authorTier === "pro" || authorTier === "scale") score += 2;
-    else if (authorTier === "growth") score += 1;
-
-    // Frequency multiplier
-    if (frequency >= 10) score += 3;
-    else if (frequency >= 5) score += 2;
-    else if (frequency >= 3) score += 1;
-
-    // Map score to priority
-    if (score >= 10) return "critical";
-    if (score >= 7) return "high";
-    if (score >= 4) return "medium";
-    return "low";
+    return calculatePriorityImpl(sentiment, category, authorTier, frequency);
   }
 
   /**
    * Calculates a sentiment score from -1 to 1.
+   * Delegates to feedbackAnalysis.sentimentToScore for single source of truth.
    */
   static sentimentToScore(sentiment: FeedbackSentiment): number {
-    const scores: Record<FeedbackSentiment, number> = {
-      very_negative: -1,
-      negative: -0.5,
-      neutral: 0,
-      positive: 0.5,
-      very_positive: 1,
-    };
-    return scores[sentiment];
+    return sentimentToScoreImpl(sentiment);
   }
 
   /**

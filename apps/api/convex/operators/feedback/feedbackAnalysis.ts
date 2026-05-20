@@ -311,18 +311,33 @@ export function extractThemes(items: FeedbackItem[], threshold: number): Feedbac
 }
 
 /**
- * Determines trend direction based on item timestamps.
- * Rising = more items in recent half than older half.
+ * Determines trend direction based on item density over time.
+ * Splits the time range in half and compares items-per-day in each half.
+ * Rising = recent half has higher density than older half.
  */
 function determineTrend(items: FeedbackItem[]): "rising" | "stable" | "declining" {
   if (items.length < 4) return "stable";
 
   const sorted = [...items].sort((a, b) => a.ingestedAt - b.ingestedAt);
-  const midpoint = Math.floor(sorted.length / 2);
-  const olderHalf = sorted.slice(0, midpoint);
-  const recentHalf = sorted.slice(midpoint);
+  const earliest = sorted[0].ingestedAt;
+  const latest = sorted[sorted.length - 1].ingestedAt;
+  const totalSpan = latest - earliest;
 
-  const ratio = recentHalf.length / Math.max(olderHalf.length, 1);
+  if (totalSpan === 0) return "stable"; // All items at same timestamp
+
+  const midTime = earliest + totalSpan / 2;
+
+  // Count items in each time half
+  let olderCount = 0;
+  let recentCount = 0;
+  for (const item of sorted) {
+    if (item.ingestedAt < midTime) olderCount++;
+    else recentCount++;
+  }
+
+  // Compare density (items per half-period are directly comparable since periods are equal)
+  if (olderCount === 0) return "rising";
+  const ratio = recentCount / olderCount;
 
   if (ratio > 1.5) return "rising";
   if (ratio < 0.67) return "declining";
