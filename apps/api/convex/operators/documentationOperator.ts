@@ -713,7 +713,7 @@ export const DOCUMENTATION_OPERATOR_TEMPLATE: OperatorTemplate = {
         title: "Repository Settings",
         fields: [
           {
-            key: "repository_url",
+            key: "repositoryUrl",
             label: "Repository URL",
             type: "text",
             description: "GitHub repository URL to analyze",
@@ -721,13 +721,13 @@ export const DOCUMENTATION_OPERATOR_TEMPLATE: OperatorTemplate = {
             validation: { minLength: 10 },
           },
           {
-            key: "docs_url",
+            key: "docsUrl",
             label: "Documentation Site URL",
             type: "text",
             description: "URL of your documentation site (optional)",
           },
           {
-            key: "monitored_code_paths",
+            key: "monitoredCodePaths",
             label: "Monitored Code Paths",
             type: "tags",
             description: "Code paths to monitor for changes (e.g., src/, api/)",
@@ -740,7 +740,7 @@ export const DOCUMENTATION_OPERATOR_TEMPLATE: OperatorTemplate = {
         title: "Generation Settings",
         fields: [
           {
-            key: "target_audience",
+            key: "targetAudience",
             label: "Target Audience",
             type: "select",
             description: "Primary audience for generated documentation",
@@ -760,7 +760,7 @@ export const DOCUMENTATION_OPERATOR_TEMPLATE: OperatorTemplate = {
             default: "typescript,javascript",
           },
           {
-            key: "staleness_threshold_days",
+            key: "stalenessThresholdDays",
             label: "Staleness Threshold (days)",
             type: "number",
             description: "Days before a page is flagged as stale",
@@ -768,7 +768,7 @@ export const DOCUMENTATION_OPERATOR_TEMPLATE: OperatorTemplate = {
             validation: { min: 7, max: 180 },
           },
           {
-            key: "auto_changelog",
+            key: "autoChangelog",
             label: "Auto-Generate Changelog",
             type: "boolean",
             description: "Automatically generate changelog entries weekly",
