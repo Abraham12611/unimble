@@ -156,16 +156,25 @@ export function classifyIssue(title: string, body: string): TriageResult["catego
 
 /**
  * Assesses issue priority based on content signals.
- * Explicit labels take precedence over content-based heuristics.
+ * Explicit priority labels take precedence over content-based heuristics.
  */
 export function assessIssuePriority(
   title: string,
   body: string,
   labels: string[]
 ): EngagementPriority {
-  // Check existing labels FIRST — explicit labels override content signals
+  // Check existing priority labels FIRST — explicit labels override content signals
   if (labels.some((l) => l.includes("critical") || l.includes("urgent"))) {
     return "critical";
+  }
+  if (labels.some((l) => l === "priority: high" || l === "high")) {
+    return "high";
+  }
+  if (labels.some((l) => l === "priority: medium" || l === "medium")) {
+    return "medium";
+  }
+  if (labels.some((l) => l === "priority: low" || l === "low")) {
+    return "low";
   }
 
   const combined = `${title} ${body}`.toLowerCase();

@@ -182,6 +182,21 @@ describe("CommunityOperator", () => {
         sentiment: "mixed",
       });
       expect(CommunityOperator.shouldAutoApprove(mixedMention, settings)).toBe(false);
+
+      // Competitor mentions should not auto-approve
+      const competitorSettings: CommunityOperatorSettings = {
+        ...DEFAULT_COMMUNITY_SETTINGS,
+        autoRespondLowRisk: true,
+        competitorNames: ["CompetitorX"],
+      };
+      const competitorMention = createTestMention({
+        priority: "low",
+        sentiment: "positive",
+        content: "I switched from CompetitorX to this tool",
+      });
+      expect(CommunityOperator.shouldAutoApprove(competitorMention, competitorSettings)).toBe(
+        false
+      );
     });
   });
 });
@@ -478,6 +493,13 @@ describe("GitHub Engagement", () => {
     expect(
       assessIssuePriority("Regression in auth flow", "Auth is broken", ["priority: critical"])
     ).toBe("critical");
+  });
+
+  it("should respect explicit high label over content-based medium", () => {
+    // "bug" matches the medium-content pattern, but explicit high label wins
+    expect(
+      assessIssuePriority("Bug in settings page", "Settings don't save", ["priority: high"])
+    ).toBe("high");
   });
 
   it("should assess high priority for blocking issues", () => {

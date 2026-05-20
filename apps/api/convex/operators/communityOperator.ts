@@ -705,9 +705,22 @@ For each mention, return:
     if (mention.sentiment === "negative") return false;
     if (mention.priority === "critical" || mention.priority === "high") return false;
 
-    // Auto-approve for non-critical, non-high, non-negative, non-mixed mentions
-    // This aligns with requiresApproval() in engagementResponse.ts
-    return mention.sentiment !== "mixed";
+    // Never auto-approve for mixed sentiment
+    if (mention.sentiment === "mixed") return false;
+
+    // Never auto-approve for competitor mentions (word-boundary match)
+    if (
+      settings.competitorNames.some((c) => {
+        const escaped = c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        return new RegExp(`\\b${escaped}\\b`, "i").test(mention.content);
+      })
+    ) {
+      return false;
+    }
+
+    // Auto-approve for non-critical, non-high, non-negative, non-mixed,
+    // non-competitor mentions. Aligns with requiresApproval() in engagementResponse.ts.
+    return true;
   }
 }
 
