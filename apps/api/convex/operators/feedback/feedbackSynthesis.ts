@@ -174,7 +174,7 @@ export function detectBugPatterns(
           existingPattern.reportCount = existingPattern.feedbackIds.length;
         }
       }
-      existingPattern.severity = assessBugSeverity(existingPattern.reportCount, areaItems);
+      existingPattern.severity = assessBugSeverity(areaItems.length, areaItems);
     } else {
       // Create new pattern
       const newPattern: BugPattern = {
@@ -228,19 +228,19 @@ export function compileSynthesisReport(
   npsScores?: number[]
 ): FeedbackSynthesisReport {
   // Count by source
-  const bySource = {} as Record<FeedbackSource, number>;
+  const bySource: Partial<Record<FeedbackSource, number>> = {};
   for (const item of items) {
     bySource[item.source] = (bySource[item.source] ?? 0) + 1;
   }
 
   // Count by category
-  const byCategory = {} as Record<FeedbackCategory, number>;
+  const byCategory: Partial<Record<FeedbackCategory, number>> = {};
   for (const item of items) {
     byCategory[item.category] = (byCategory[item.category] ?? 0) + 1;
   }
 
   // Sentiment distribution
-  const sentimentDist = {} as Record<FeedbackSentiment, number>;
+  const sentimentDist: Partial<Record<FeedbackSentiment, number>> = {};
   for (const item of items) {
     sentimentDist[item.sentiment] = (sentimentDist[item.sentiment] ?? 0) + 1;
   }

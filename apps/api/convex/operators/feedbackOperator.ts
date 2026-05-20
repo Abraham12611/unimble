@@ -171,12 +171,12 @@ export interface FeedbackSynthesisReport {
   period: { start: string; end: string };
   /** Total feedback items processed */
   totalItems: number;
-  /** Breakdown by source */
-  bySource: Record<FeedbackSource, number>;
-  /** Breakdown by category */
-  byCategory: Record<FeedbackCategory, number>;
-  /** Sentiment distribution */
-  sentimentDistribution: Record<FeedbackSentiment, number>;
+  /** Breakdown by source (only keys with data are present) */
+  bySource: Partial<Record<FeedbackSource, number>>;
+  /** Breakdown by category (only keys with data are present) */
+  byCategory: Partial<Record<FeedbackCategory, number>>;
+  /** Sentiment distribution (only keys with data are present) */
+  sentimentDistribution: Partial<Record<FeedbackSentiment, number>>;
   /** Top themes this period */
   topThemes: FeedbackTheme[];
   /** New feature requests */
