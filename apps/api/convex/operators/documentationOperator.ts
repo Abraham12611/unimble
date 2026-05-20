@@ -22,6 +22,11 @@ import type { AgentConfig } from "../agent/types";
 import type { Persona } from "../agent/personas";
 import { getDefaultPersona } from "../agent/personas";
 import type { WorkflowDefinition } from "../engine/types";
+import {
+  calculateFreshnessScore as calculateFreshnessScoreImpl,
+  determineDocStatus as determineDocStatusImpl,
+  calculateCoverageScore as calculateCoverageScoreImpl,
+} from "./documentation/docAudit";
 
 // ---------------------------------------------------------------------------
 // Documentation-specific types
@@ -424,10 +429,25 @@ Return JSON with scores, verdict, and revision instructions if needed.`,
           },
         },
         {
+          id: "review_gate",
+          name: "Review Gate",
+          type: "conditional",
+          dependsOn: ["review"],
+          config: {
+            conditions: [
+              {
+                expression: "{{review.output.verdict}} === 'approve'",
+                thenSteps: ["publish"],
+              },
+            ],
+            elseSteps: [],
+          },
+        },
+        {
           id: "publish",
           name: "Publish Documentation",
           type: "agent",
-          dependsOn: ["review"],
+          dependsOn: ["review_gate"],
           config: {
             prompt: `Publish the approved documentation:
 1. Format for the target platform (docs site, GitHub, etc.)
@@ -615,41 +635,30 @@ Return the full documentation in markdown format.`;
 
   /**
    * Calculates a freshness score for a documentation page.
-   * Returns 1.0 for recently updated, decays toward 0 as it ages.
+   * Delegates to docAudit.calculateFreshnessScore.
    */
   static calculateFreshnessScore(lastUpdatedAt: number, stalenessThresholdDays: number): number {
-    const daysSinceUpdate = (Date.now() - lastUpdatedAt) / 86400000;
-    if (daysSinceUpdate <= 0) return 1;
-    if (daysSinceUpdate >= stalenessThresholdDays * 2) return 0;
-    // Linear decay from 1 to 0 over 2x threshold
-    return Math.max(0, 1 - daysSinceUpdate / (stalenessThresholdDays * 2));
+    return calculateFreshnessScoreImpl(lastUpdatedAt, stalenessThresholdDays);
   }
 
   /**
    * Determines doc status based on age and code changes.
+   * Delegates to docAudit.determineDocStatus.
    */
   static determineStatus(
     lastUpdatedAt: number,
     stalenessThresholdDays: number,
     hasRelatedCodeChanges: boolean
   ): DocStatus {
-    const daysSinceUpdate = (Date.now() - lastUpdatedAt) / 86400000;
-
-    if (hasRelatedCodeChanges) return "outdated";
-    if (daysSinceUpdate > stalenessThresholdDays * 2) return "outdated";
-    if (daysSinceUpdate > stalenessThresholdDays) return "stale";
-    return "current";
+    return determineDocStatusImpl(lastUpdatedAt, stalenessThresholdDays, hasRelatedCodeChanges);
   }
 
   /**
    * Calculates overall coverage score from page statuses.
+   * Delegates to docAudit.calculateCoverageScore.
    */
   static calculateCoverageScore(pages: DocPage[]): number {
-    if (pages.length === 0) return 0;
-    const currentOrDraft = pages.filter(
-      (p) => p.status === "current" || p.status === "draft"
-    ).length;
-    return currentOrDraft / pages.length;
+    return calculateCoverageScoreImpl(pages);
   }
 
   /**

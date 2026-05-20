@@ -167,9 +167,10 @@ export function detectIssues(
     });
   }
 
-  // Broken link detection (simple pattern)
-  const brokenLinkPatterns = /\[([^\]]+)\]\((?:(?!https?:\/\/)(?!#)(?!\/))[^)]*\)/g;
-  if (brokenLinkPatterns.test(content)) {
+  // Broken link detection (simple pattern — excludes http(s), #anchors, /, ./, ../)
+  const brokenLinkPattern =
+    /\[([^\]]+)\]\((?:(?!https?:\/\/)(?!#)(?!\/)(?!\.\/)(?!\.\.\/))[^)]*\)/g;
+  if (brokenLinkPattern.test(content)) {
     issues.push({
       type: "broken_link",
       severity: "minor",

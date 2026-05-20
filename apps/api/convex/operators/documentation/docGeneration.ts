@@ -172,6 +172,8 @@ export function buildDocSkeleton(
   sections.push(`> Generated documentation for ${settings.targetAudience} developers.\n`);
 
   for (const section of template.requiredSections) {
+    // Skip "Examples" here if requiresExamples is true — the typed block below handles it
+    if (section === "Examples" && template.requiresExamples) continue;
     sections.push(`## ${section}\n`);
     sections.push(`<!-- TODO: Fill in ${section.toLowerCase()} content -->\n`);
   }
