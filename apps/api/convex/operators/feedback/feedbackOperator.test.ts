@@ -254,6 +254,25 @@ describe("Feedback Collection", () => {
     expect(result.isDuplicate).toBe(false);
   });
 
+  it("should not flag cross-source similar content as duplicate", () => {
+    // Same content from different sources should NOT be deduplicated
+    // (preserves frequency signal for prioritization)
+    const newItem: RawFeedback = {
+      source: "in_app_feedback",
+      content: "The login page is completely broken after the update",
+      timestamp: Date.now(),
+    };
+    const existing = [
+      {
+        id: "fb_5",
+        content: "The login page is completely broken after the update",
+        source: "support_ticket" as const,
+      },
+    ];
+    const result = checkDuplicate(newItem, existing);
+    expect(result.isDuplicate).toBe(false);
+  });
+
   it("should extract NPS score from content", () => {
     expect(extractNpsScore("Score: 9/10. Great product!")).toBe(9);
     expect(extractNpsScore("NPS: 3")).toBe(3);

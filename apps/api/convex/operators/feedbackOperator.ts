@@ -643,7 +643,7 @@ Return JSON array of raw feedback items with: source, content, author, authorTie
 export const FEEDBACK_OPERATOR_TEMPLATE: OperatorTemplate = {
   id: "feedback-operator",
   type: "feedback",
-  version: "1.0.0",
+  version: "1.1.0",
   name: "Feedback Operator",
   description: "Autonomous product feedback collection, analysis, and synthesis",
   icon: "chat-circle-text",

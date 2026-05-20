@@ -216,8 +216,10 @@ export function checkDuplicate(
   }
 
   // Content similarity check (simple Jaccard on word sets)
+  // Only compare within the same source to preserve cross-source frequency signals
   const newWords = extractWordSet(newItem.content);
   for (const existing of existingItems) {
+    if (existing.source !== newItem.source) continue; // Skip cross-source comparisons
     const existingWords = extractWordSet(existing.content);
     const similarity = jaccardSimilarity(newWords, existingWords);
     if (similarity > 0.85) {
