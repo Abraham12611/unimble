@@ -217,9 +217,9 @@ function assessBugSeverity(reportCount: number, items: FeedbackItem[]): BugPatte
     items.reduce((sum, i) => sum + sentimentToScore(i.sentiment), 0) / items.length;
 
   // Critical: many reports with very negative sentiment
-  if (reportCount >= 10 && avgSentiment < -0.7) return "critical";
-  if (reportCount >= 5 && avgSentiment < -0.5) return "major";
-  if (reportCount >= 3 || avgSentiment < -0.3) return "minor";
+  if (reportCount >= 10 && avgSentiment <= -0.7) return "critical";
+  if (reportCount >= 5 && avgSentiment <= -0.5) return "major";
+  if (reportCount >= 3 || avgSentiment <= -0.3) return "minor";
   return "cosmetic";
 }
 
