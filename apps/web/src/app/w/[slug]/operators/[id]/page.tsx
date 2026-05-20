@@ -12,6 +12,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useWorkspaceContext } from "@/lib/workspace-context";
+import { formatRelativeTime, formatDuration } from "@/lib/format";
 import {
   Robot,
   Play,
@@ -166,10 +167,25 @@ function OverviewTab({
   };
 }) {
   const stats = [
-    { label: "Executions (7d)", value: String(operator.executionsThisWeek), trend: "+20%" },
-    { label: "Success rate", value: `${operator.successRate}%`, trend: null },
-    { label: "Avg duration", value: formatDuration(operator.avgDurationMs), trend: "-10%" },
-    { label: "Cost (7d)", value: `$${operator.costThisWeek.toFixed(2)}`, trend: "+5%" },
+    {
+      label: "Executions (7d)",
+      value: String(operator.executionsThisWeek),
+      trend: "+20%",
+      trendPositive: true,
+    },
+    { label: "Success rate", value: `${operator.successRate}%`, trend: null, trendPositive: true },
+    {
+      label: "Avg duration",
+      value: formatDuration(operator.avgDurationMs),
+      trend: "-10%",
+      trendPositive: true,
+    },
+    {
+      label: "Cost (7d)",
+      value: `$${operator.costThisWeek.toFixed(2)}`,
+      trend: "+5%",
+      trendPositive: false,
+    },
   ];
 
   return (
@@ -187,7 +203,7 @@ function OverviewTab({
               </span>
               {stat.trend && (
                 <span
-                  className={`text-[12px] font-medium ${stat.trend.startsWith("+") ? "text-[#22C55E]" : "text-[#3B82F6]"}`}
+                  className={`text-[12px] font-medium ${stat.trendPositive ? "text-[#22C55E]" : "text-[#EF4444]"}`}
                 >
                   {stat.trend}
                 </span>
@@ -414,24 +430,5 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Helpers (imported from @/lib/format)
 // ---------------------------------------------------------------------------
-
-function formatRelativeTime(timestamp: number): string {
-  const seconds = Math.floor((Date.now() - timestamp) / 1000);
-  if (seconds < 60) return "Just now";
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
-}
-
-function formatDuration(ms: number): string {
-  const seconds = Math.floor(ms / 1000);
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = seconds % 60;
-  return `${minutes}m ${remainingSeconds}s`;
-}

@@ -12,6 +12,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useWorkspaceContext } from "@/lib/workspace-context";
+import { formatRelativeTime } from "@/lib/format";
 import {
   Robot,
   Plus,
@@ -37,7 +38,6 @@ interface OperatorSummary {
   name: string;
   type: OperatorType;
   status: OperatorStatus;
-  icon: string;
   lastRunAt?: number;
   lastRunStatus?: "success" | "failed";
   nextRunAt?: number;
@@ -177,8 +177,10 @@ export default function OperatorsListPage() {
       </div>
 
       {/* Content */}
-      {filteredOperators.length === 0 ? (
+      {operators.length === 0 ? (
         <EmptyState slug={slug} />
+      ) : filteredOperators.length === 0 ? (
+        <NoResultsState />
       ) : viewMode === "grid" ? (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {filteredOperators.map((op) => (
@@ -389,17 +391,18 @@ function EmptyState({ slug }: { slug: string }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function formatRelativeTime(timestamp: number): string {
-  const seconds = Math.floor((Date.now() - timestamp) / 1000);
-  if (seconds < 60) return "Just now";
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
+function NoResultsState() {
+  return (
+    <div className="flex flex-col items-center justify-center rounded-[14px] border border-[#222222] bg-[#161616] px-6 py-12 text-center">
+      <MagnifyingGlass size={24} className="text-[#555555]" />
+      <h2 className="mt-3 text-[15px] font-medium text-[#F0F0F0]">No matching operators</h2>
+      <p className="mt-1.5 max-w-sm text-[12px] text-[#555555]">
+        Try adjusting your search or filters to find what you&apos;re looking for.
+      </p>
+    </div>
+  );
 }
+
+// ---------------------------------------------------------------------------
+// Helpers (imported from shared lib)
+// ---------------------------------------------------------------------------
