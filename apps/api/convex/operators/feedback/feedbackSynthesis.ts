@@ -173,7 +173,7 @@ export function detectBugPatterns(
           existingPattern.reportCount = existingPattern.feedbackIds.length;
         }
       }
-      existingPattern.severity = assessBugSeverity(areaItems.length, areaItems);
+      existingPattern.severity = assessBugSeverity(existingPattern.reportCount, areaItems);
     } else {
       // Need at least 2 reports to create a NEW pattern
       if (areaItems.length < 2) continue;
