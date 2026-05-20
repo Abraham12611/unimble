@@ -158,16 +158,15 @@ export function detectBugPatterns(
   }
 
   // Detect patterns within each area
+  // Detect patterns within each area
   for (const [area, areaItems] of byArea) {
-    if (areaItems.length < 2) continue; // Need at least 2 reports
-
     // Check if this matches an existing pattern
     const existingPattern = Array.from(patterns.values()).find(
       (p) => p.featureArea === area && !p.resolved
     );
 
     if (existingPattern) {
-      // Update existing pattern
+      // Always update existing patterns — no minimum threshold for accumulation
       for (const item of areaItems) {
         if (!existingPattern.feedbackIds.includes(item.id)) {
           existingPattern.feedbackIds.push(item.id);
@@ -176,6 +175,9 @@ export function detectBugPatterns(
       }
       existingPattern.severity = assessBugSeverity(areaItems.length, areaItems);
     } else {
+      // Need at least 2 reports to create a NEW pattern
+      if (areaItems.length < 2) continue;
+
       // Create new pattern
       const newPattern: BugPattern = {
         id: `bp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,

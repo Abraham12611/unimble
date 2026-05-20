@@ -519,6 +519,39 @@ describe("Feedback Synthesis", () => {
     expect(patterns[0].reportCount).toBe(2);
   });
 
+  it("should update existing bug pattern with single new report", () => {
+    // Existing pattern with 5 reports
+    const existingPatterns = [
+      {
+        id: "bp_existing",
+        title: "Bug in authentication",
+        description: "Login crashes",
+        featureArea: "authentication",
+        reportCount: 5,
+        severity: "major" as const,
+        feedbackIds: ["old1", "old2", "old3", "old4", "old5"],
+        firstReportedAt: Date.now() - 86400000 * 7,
+        resolved: false,
+      },
+    ];
+
+    // Single new report in the same area
+    const newItems: FeedbackItem[] = [
+      createTestFeedbackItem({
+        id: "new1",
+        category: "bug",
+        featureArea: "authentication",
+        sentiment: "negative",
+      }),
+    ];
+
+    const patterns = detectBugPatterns(newItems, existingPatterns);
+    const authPattern = patterns.find((p) => p.featureArea === "authentication");
+    expect(authPattern).toBeDefined();
+    expect(authPattern!.reportCount).toBe(6); // 5 existing + 1 new
+    expect(authPattern!.feedbackIds).toContain("new1");
+  });
+
   it("should compile synthesis report", () => {
     const items: FeedbackItem[] = [
       createTestFeedbackItem({ source: "support_ticket", category: "bug", sentiment: "negative" }),
