@@ -49,6 +49,24 @@ interface MemoryEntry {
   updatedAt: number;
 }
 
+type OperatorStatus = "active" | "paused" | "error";
+type OperatorType = "content" | "growth" | "community" | "feedback" | "documentation" | "custom";
+
+const STATUS_COLORS: Record<OperatorStatus, { dot: string; text: string }> = {
+  active: { dot: "bg-[#22C55E]", text: "text-[#22C55E]" },
+  paused: { dot: "bg-[#F59E0B]", text: "text-[#F59E0B]" },
+  error: { dot: "bg-[#EF4444]", text: "text-[#EF4444]" },
+};
+
+const TYPE_LABELS: Record<OperatorType, string> = {
+  content: "Content",
+  growth: "Growth",
+  community: "Community",
+  feedback: "Feedback",
+  documentation: "Docs",
+  custom: "Custom",
+};
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -99,11 +117,15 @@ export default function OperatorDetailPage() {
             <h1 className="text-[18px] font-medium leading-snug text-[#F0F0F0]">{operator.name}</h1>
             <div className="mt-0.5 flex items-center gap-2">
               <span className="inline-flex items-center gap-1.5">
-                <span className="h-1.5 w-1.5 rounded-full bg-[#22C55E]" />
-                <span className="text-[12px] capitalize text-[#22C55E]">{operator.status}</span>
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${STATUS_COLORS[operator.status].dot}`}
+                />
+                <span className={`text-[12px] capitalize ${STATUS_COLORS[operator.status].text}`}>
+                  {operator.status}
+                </span>
               </span>
               <span className="text-[12px] text-[#555555]">•</span>
-              <span className="text-[12px] text-[#888888]">Content</span>
+              <span className="text-[12px] text-[#888888]">{TYPE_LABELS[operator.type]}</span>
             </div>
           </div>
         </div>
