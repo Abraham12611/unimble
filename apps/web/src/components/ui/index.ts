@@ -22,3 +22,13 @@ export { Avatar, type AvatarProps } from "./avatar";
 export { Modal, type ModalProps } from "./modal";
 export { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "./table";
 export { StatusDot, type StatusDotProps, type StatusDotVariant } from "./status-dot";
+export { StatCard, type StatCardProps } from "./stat-card";
+export {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
+  type TabsProps,
+  type TabsTriggerProps,
+  type TabsContentProps,
+} from "./tabs";
