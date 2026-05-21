@@ -4,6 +4,7 @@ import { useEffect, useCallback, useRef, useId } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X } from "@phosphor-icons/react";
 import { cn } from "@/lib/cn";
+import { lockScroll, unlockScroll } from "@/lib/use-scroll-lock";
 import { overlay, modal as modalVariants } from "@/lib/motion";
 
 export interface ModalProps {
@@ -88,13 +89,12 @@ function Modal({
   useEffect(() => {
     if (!open) return;
 
-    const previousOverflow = document.body.style.overflow;
+    lockScroll();
     document.addEventListener("keydown", handleKeyDown);
-    document.body.style.overflow = "hidden";
 
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
-      document.body.style.overflow = previousOverflow;
+      unlockScroll();
     };
   }, [open, handleKeyDown]);
 

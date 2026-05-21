@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CaretDown, Plus, Check } from "@phosphor-icons/react";
+import { cn } from "@/lib/cn";
 import { useWorkspaceContext } from "@/lib/workspace-context";
 
 function WorkspaceAvatar({ name }: { name: string }) {
@@ -12,7 +13,7 @@ function WorkspaceAvatar({ name }: { name: string }) {
     .join("");
 
   return (
-    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[4px] bg-[#2A2A2A] text-[10px] font-semibold text-[#888888]">
+    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[4px] bg-[var(--bg-card-hover)] text-[10px] font-semibold text-[var(--text-secondary)]">
       {initials || "W"}
     </div>
   );
@@ -118,7 +119,9 @@ export function WorkspaceSwitcher({ onCreateWorkspace }: { onCreateWorkspace?: (
         type="button"
         onClick={() => (open ? setOpen(false) : handleOpen())}
         disabled={isLoading}
-        className="flex items-center gap-1.5 rounded-[6px] px-2 py-1 text-[13px] font-medium text-[#F0F0F0] transition-colors hover:bg-[#1C1C1C]"
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        className="flex items-center gap-1.5 rounded-[6px] px-2 py-1 text-[13px] font-medium text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-card-hover)]"
       >
         {workspace && <WorkspaceAvatar name={workspace.name} />}
         <span className="max-w-[160px] truncate">
@@ -126,31 +129,33 @@ export function WorkspaceSwitcher({ onCreateWorkspace }: { onCreateWorkspace?: (
         </span>
         <CaretDown
           size={14}
-          className={`text-[#555555] transition-transform ${open ? "rotate-180" : ""}`}
+          className={cn("text-[var(--text-muted)] transition-transform", open && "rotate-180")}
         />
       </button>
 
       {open && (
         <div
-          className="absolute left-0 top-full z-50 mt-1 w-[260px] rounded-[10px] border border-[#2A2A2A] bg-[#161616] shadow-[0_8px_32px_rgba(0,0,0,0.7),0_0_0_1px_rgba(255,255,255,0.06)]"
+          role="listbox"
+          className="absolute left-0 top-full z-50 mt-1 w-[260px] rounded-[10px] border border-[var(--border-default)] bg-[var(--bg-card)] shadow-[var(--shadow-popup)]"
           onKeyDown={handleDropdownKeyDown}
         >
           {(workspaces?.length ?? 0) > 3 && (
-            <div className="border-b border-[#222222] p-2">
+            <div className="border-b border-[var(--border-subtle)] p-2">
               <input
                 ref={searchInputRef}
                 type="text"
                 value={search}
                 onChange={(e) => handleSearchChange(e.target.value)}
                 placeholder="Search workspaces…"
-                className="w-full rounded-[6px] border border-[#2A2A2A] bg-[#1A1A1A] px-2 py-1.5 text-[12px] text-[#F0F0F0] outline-none placeholder:text-[#555555] focus:border-[#3A3A3A]"
+                aria-label="Search workspaces"
+                className="w-full rounded-[6px] border border-[var(--border-default)] bg-[var(--bg-input)] px-2 py-1.5 text-[12px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:border-[var(--border-focus)]"
               />
             </div>
           )}
 
           <div ref={listRef} className="max-h-[240px] overflow-y-auto p-1">
             {filtered.length === 0 ? (
-              <div className="px-2 py-3 text-center text-[12px] text-[#555555]">
+              <div className="px-2 py-3 text-center text-[12px] text-[var(--text-muted)]">
                 No workspaces found
               </div>
             ) : (
@@ -161,6 +166,8 @@ export function WorkspaceSwitcher({ onCreateWorkspace }: { onCreateWorkspace?: (
                   <button
                     key={ws._id}
                     type="button"
+                    role="option"
+                    aria-selected={isActive}
                     data-ws-item
                     onClick={() => {
                       switchWorkspace(ws.slug);
@@ -168,24 +175,27 @@ export function WorkspaceSwitcher({ onCreateWorkspace }: { onCreateWorkspace?: (
                       setSearch("");
                     }}
                     onMouseEnter={() => setHighlightIndex(index)}
-                    className={`flex w-full items-center gap-2 rounded-[6px] px-2 py-1.5 text-left text-[13px] transition-colors ${
+                    className={cn(
+                      "flex w-full items-center gap-2 rounded-[6px] px-2 py-1.5 text-left text-[13px] transition-colors",
                       isHighlighted
-                        ? "bg-[#1C1C1C] text-[#F0F0F0]"
+                        ? "bg-[var(--bg-card-hover)] text-[var(--text-primary)]"
                         : isActive
-                          ? "text-[#F0F0F0]"
-                          : "text-[#888888]"
-                    }`}
+                          ? "text-[var(--text-primary)]"
+                          : "text-[var(--text-secondary)]"
+                    )}
                   >
                     <WorkspaceAvatar name={ws.name} />
                     <span className="min-w-0 flex-1 truncate">{ws.name}</span>
-                    {isActive && <Check size={14} className="shrink-0 text-[#22C55E]" />}
+                    {isActive && (
+                      <Check size={14} className="shrink-0 text-[var(--semantic-positive-fg)]" />
+                    )}
                   </button>
                 );
               })
             )}
           </div>
 
-          <div className="border-t border-[#222222] p-1">
+          <div className="border-t border-[var(--border-subtle)] p-1">
             <button
               type="button"
               onClick={() => {
@@ -193,7 +203,7 @@ export function WorkspaceSwitcher({ onCreateWorkspace }: { onCreateWorkspace?: (
                 setSearch("");
                 onCreateWorkspace?.();
               }}
-              className="flex w-full items-center gap-2 rounded-[6px] px-2 py-1.5 text-[13px] text-[#888888] transition-colors hover:bg-[#1C1C1C] hover:text-[#F0F0F0]"
+              className="flex w-full items-center gap-2 rounded-[6px] px-2 py-1.5 text-[13px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]"
             >
               <Plus size={14} />
               <span>Create workspace</span>
