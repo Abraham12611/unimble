@@ -35,12 +35,28 @@ import { StatCardGrid } from "@/components/layout";
  * E. Empty State (when no operators deployed)
  * --------------------------------------------------------------------------- */
 
-// Mock data — will be replaced with Convex queries
+// Mock data — will be replaced with Convex queries.
+// Toggle to false to test the empty state UI.
+const SHOW_MOCK_DATA = true;
+
+// Stats represent percentage deltas (e.g., 12 = "12% increase vs last period")
 const MOCK_STATS = {
   activeOperators: 3,
   executionsThisWeek: 127,
   contentPublished: 5,
   communityInteractions: 234,
+};
+
+// Mock usage data for billing alert — only shown when usage exceeds threshold
+const MOCK_USAGE = {
+  executionsUsed: 847,
+  executionsLimit: 1000,
+  get percentage() {
+    return Math.round((this.executionsUsed / this.executionsLimit) * 100);
+  },
+  get showWarning() {
+    return this.percentage >= 80;
+  },
 };
 
 const MOCK_OPERATORS = [
@@ -273,7 +289,7 @@ export default function WorkspaceDashboardPage() {
   const workspaceSlug = slug ?? "";
 
   // For now, use mock data. In production, this would be Convex queries.
-  const hasOperators = MOCK_OPERATORS.length > 0;
+  const hasOperators = SHOW_MOCK_DATA && MOCK_OPERATORS.length > 0;
 
   return (
     <div className="space-y-6">
@@ -413,18 +429,25 @@ export default function WorkspaceDashboardPage() {
                 </CardContent>
               </Card>
 
-              {/* Alert example */}
-              <div className="flex items-start gap-3 rounded-[10px] border border-[var(--semantic-warning-fg)]/20 bg-[var(--semantic-warning-bg)] p-3">
-                <Warning size={16} className="mt-0.5 shrink-0 text-[var(--semantic-warning-fg)]" />
-                <div>
-                  <div className="text-[12px] font-medium text-[var(--semantic-warning-fg)]">
-                    Approaching execution limit
-                  </div>
-                  <div className="mt-0.5 text-[11px] text-[var(--text-secondary)]">
-                    847 / 1,000 executions used this billing period (85%)
+              {/* Billing usage alert — only shown when approaching limit */}
+              {MOCK_USAGE.showWarning && (
+                <div className="flex items-start gap-3 rounded-[10px] border border-[var(--semantic-warning-fg)]/20 bg-[var(--semantic-warning-bg)] p-3">
+                  <Warning
+                    size={16}
+                    className="mt-0.5 shrink-0 text-[var(--semantic-warning-fg)]"
+                  />
+                  <div>
+                    <div className="text-[12px] font-medium text-[var(--semantic-warning-fg)]">
+                      Approaching execution limit
+                    </div>
+                    <div className="mt-0.5 text-[11px] text-[var(--text-secondary)]">
+                      {MOCK_USAGE.executionsUsed.toLocaleString()} /{" "}
+                      {MOCK_USAGE.executionsLimit.toLocaleString()} executions used this billing
+                      period ({MOCK_USAGE.percentage}%)
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
         </>
