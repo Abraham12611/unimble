@@ -39,7 +39,7 @@ function Avatar({ src, alt, fallback, size = "md", className, ...props }: Avatar
       {src ? (
         <Image
           src={src}
-          alt={alt || "Avatar"}
+          alt=""
           fill
           className="object-cover"
           sizes={size === "sm" ? "24px" : size === "md" ? "32px" : "40px"}

@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useCallback, useRef } from "react";
+import { createContext, useContext, useState, useCallback, useRef, useId } from "react";
 import { cn } from "@/lib/cn";
 
 /* ---------------------------------------------------------------------------
@@ -13,11 +13,14 @@ import { cn } from "@/lib/cn";
  * - ArrowRight/ArrowLeft: move focus between triggers
  * - Home/End: move to first/last trigger
  * - Inactive panels stay in DOM (hidden) so aria-controls always resolves
+ * - Per-instance useId() prefix prevents ID collisions across multiple Tabs
  * --------------------------------------------------------------------------- */
 
 interface TabsContextValue {
   activeTab: string;
   setActiveTab: (id: string) => void;
+  /** Unique prefix for this Tabs instance to namespace panel IDs */
+  instanceId: string;
 }
 
 const TabsContext = createContext<TabsContextValue | null>(null);
@@ -42,6 +45,7 @@ export interface TabsProps {
 function Tabs({ defaultValue, value, onValueChange, children, className }: TabsProps) {
   const [internalValue, setInternalValue] = useState(defaultValue);
   const activeTab = value ?? internalValue;
+  const instanceId = useId();
 
   const setActiveTab = useCallback(
     (id: string) => {
@@ -52,7 +56,7 @@ function Tabs({ defaultValue, value, onValueChange, children, className }: TabsP
   );
 
   return (
-    <TabsContext.Provider value={{ activeTab, setActiveTab }}>
+    <TabsContext.Provider value={{ activeTab, setActiveTab, instanceId }}>
       <div className={className}>{children}</div>
     </TabsContext.Provider>
   );
@@ -126,7 +130,7 @@ export interface TabsTriggerProps {
 }
 
 function TabsTrigger({ value, children, className, disabled }: TabsTriggerProps) {
-  const { activeTab, setActiveTab } = useTabsContext();
+  const { activeTab, setActiveTab, instanceId } = useTabsContext();
   const isActive = activeTab === value;
 
   return (
@@ -134,7 +138,7 @@ function TabsTrigger({ value, children, className, disabled }: TabsTriggerProps)
       type="button"
       role="tab"
       aria-selected={isActive}
-      aria-controls={`tabpanel-${value}`}
+      aria-controls={`${instanceId}-tabpanel-${value}`}
       tabIndex={isActive ? 0 : -1}
       disabled={disabled}
       onClick={() => setActiveTab(value)}
@@ -156,7 +160,7 @@ function TabsTrigger({ value, children, className, disabled }: TabsTriggerProps)
  * TabsContent — Panel content for a tab
  *
  * Panels stay in the DOM (hidden) so aria-controls always resolves to a
- * valid element. This follows WAI-ARIA Authoring Practices.
+ * valid element. IDs are namespaced per-instance to prevent collisions.
  * --------------------------------------------------------------------------- */
 
 export interface TabsContentProps {
@@ -166,13 +170,13 @@ export interface TabsContentProps {
 }
 
 function TabsContent({ value, children, className }: TabsContentProps) {
-  const { activeTab } = useTabsContext();
+  const { activeTab, instanceId } = useTabsContext();
   const isActive = activeTab === value;
 
   return (
     <div
       role="tabpanel"
-      id={`tabpanel-${value}`}
+      id={`${instanceId}-tabpanel-${value}`}
       tabIndex={0}
       hidden={!isActive}
       className={cn("mt-4", !isActive && "hidden", className)}

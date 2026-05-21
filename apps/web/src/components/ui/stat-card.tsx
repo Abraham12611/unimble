@@ -71,7 +71,7 @@ function StatCard({
 
         {/* Mini sparkline */}
         {sparkline && sparkline.length > 0 && (
-          <div className="flex h-10 items-end gap-[2px]">
+          <div className="flex h-10 items-end gap-[2px]" aria-hidden="true">
             {sparkline.map((val, i) => {
               const isLast = i === sparkline.length - 1;
               return (
