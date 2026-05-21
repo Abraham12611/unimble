@@ -52,12 +52,14 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   // Build command items
   const commands: CommandItem[] = useMemo(() => {
     const nav = (href: string) => () => {
       router.push(`/w/${slug}/${href}`);
-      onClose();
+      onCloseRef.current();
     };
 
     return [
@@ -144,7 +146,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
         action: nav("operators"),
       },
     ];
-  }, [slug, router, onClose]);
+  }, [slug, router]);
 
   // Filter commands by query
   const filtered = useMemo(() => {
@@ -168,8 +170,8 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
     return groups;
   }, [filtered]);
 
-  // Flat list for keyboard navigation
-  const flatItems = useMemo(() => filtered, [filtered]);
+  // Flat list for keyboard navigation (alias for readability)
+  const flatItems = filtered;
 
   // Reset state when opening
   useEffect(() => {

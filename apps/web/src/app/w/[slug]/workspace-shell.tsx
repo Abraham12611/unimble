@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { UserButton } from "@clerk/nextjs";
 import {
   House,
@@ -18,7 +18,7 @@ import {
   X,
 } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { cn } from "@/lib/cn";
 import { WorkspaceProvider, useWorkspaceContext } from "@/lib/workspace-context";
 import { WorkspaceSwitcher } from "./workspace-switcher";
@@ -295,11 +295,11 @@ function WorkspaceGuard({ children }: { children: ReactNode }) {
 
 function useKeyboardShortcuts({ onOpenCommandPalette }: { onOpenCommandPalette: () => void }) {
   const { slug } = useWorkspaceContext();
-  const [pendingG, setPendingG] = useState(false);
+  const router = useRouter();
+  const pendingGRef = useRef(false);
+  const gTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    let gTimeout: ReturnType<typeof setTimeout>;
-
     function handleKeyDown(e: KeyboardEvent) {
       // Don't trigger shortcuts when typing in inputs
       const target = e.target as HTMLElement;
@@ -326,19 +326,23 @@ function useKeyboardShortcuts({ onOpenCommandPalette }: { onOpenCommandPalette: 
         return;
       }
 
-      // "?" → Show shortcuts (future)
       // G + <key> navigation
       if (e.key === "g" || e.key === "G") {
-        if (!pendingG) {
-          setPendingG(true);
-          gTimeout = setTimeout(() => setPendingG(false), 1000);
+        if (!pendingGRef.current) {
+          pendingGRef.current = true;
+          gTimeoutRef.current = setTimeout(() => {
+            pendingGRef.current = false;
+          }, 1000);
           return;
         }
       }
 
-      if (pendingG) {
-        setPendingG(false);
-        clearTimeout(gTimeout);
+      if (pendingGRef.current) {
+        pendingGRef.current = false;
+        if (gTimeoutRef.current) {
+          clearTimeout(gTimeoutRef.current);
+          gTimeoutRef.current = null;
+        }
 
         const keyMap: Record<string, string> = {
           h: "dashboard",
@@ -354,7 +358,7 @@ function useKeyboardShortcuts({ onOpenCommandPalette }: { onOpenCommandPalette: 
         const route = keyMap[e.key.toLowerCase()];
         if (route) {
           e.preventDefault();
-          window.location.href = `/w/${slug}/${route}`;
+          router.push(`/w/${slug}/${route}`);
         }
       }
     }
@@ -362,9 +366,11 @@ function useKeyboardShortcuts({ onOpenCommandPalette }: { onOpenCommandPalette: 
     document.addEventListener("keydown", handleKeyDown);
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
-      clearTimeout(gTimeout);
+      if (gTimeoutRef.current) {
+        clearTimeout(gTimeoutRef.current);
+      }
     };
-  }, [slug, pendingG, onOpenCommandPalette]);
+  }, [slug, onOpenCommandPalette, router]);
 }
 
 /* ---------------------------------------------------------------------------
