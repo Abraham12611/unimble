@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useCallback, useRef } from "react";
+import { useEffect, useCallback, useRef, useId } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X } from "@phosphor-icons/react";
 import { cn } from "@/lib/cn";
@@ -42,6 +42,8 @@ function Modal({
   closeOnOverlayClick = true,
 }: ModalProps) {
   const contentRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
+  const descriptionId = useId();
 
   // Close on Escape
   const handleKeyDown = useCallback(
@@ -52,13 +54,15 @@ function Modal({
   );
 
   useEffect(() => {
-    if (open) {
-      document.addEventListener("keydown", handleKeyDown);
-      document.body.style.overflow = "hidden";
-    }
+    if (!open) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.addEventListener("keydown", handleKeyDown);
+    document.body.style.overflow = "hidden";
+
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
-      document.body.style.overflow = "";
+      document.body.style.overflow = previousOverflow;
     };
   }, [open, handleKeyDown]);
 
@@ -92,8 +96,8 @@ function Modal({
             ref={contentRef}
             role="dialog"
             aria-modal="true"
-            aria-labelledby={title ? "modal-title" : undefined}
-            aria-describedby={description ? "modal-description" : undefined}
+            aria-labelledby={title ? titleId : undefined}
+            aria-describedby={description ? descriptionId : undefined}
             className={cn(
               "relative w-full rounded-[14px] border border-[var(--border-default)]",
               "bg-[var(--bg-surface)] shadow-[var(--shadow-popup)]",
@@ -109,18 +113,12 @@ function Modal({
             {(title || description) && (
               <div className="mb-4">
                 {title && (
-                  <h2
-                    id="modal-title"
-                    className="text-[15px] font-medium text-[var(--text-primary)]"
-                  >
+                  <h2 id={titleId} className="text-[15px] font-medium text-[var(--text-primary)]">
                     {title}
                   </h2>
                 )}
                 {description && (
-                  <p
-                    id="modal-description"
-                    className="mt-1 text-[12px] text-[var(--text-secondary)]"
-                  >
+                  <p id={descriptionId} className="mt-1 text-[12px] text-[var(--text-secondary)]">
                     {description}
                   </p>
                 )}

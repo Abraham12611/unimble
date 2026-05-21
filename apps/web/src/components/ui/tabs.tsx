@@ -8,6 +8,8 @@ import { cn } from "@/lib/cn";
  *
  * Active tab: card background, border, primary text, weight 500
  * Inactive tab: transparent, muted text, weight 400
+ *
+ * Inactive panels remain in the DOM (hidden) so aria-controls always resolves.
  * --------------------------------------------------------------------------- */
 
 interface TabsContextValue {
@@ -92,6 +94,7 @@ function TabsTrigger({ value, children, className, disabled }: TabsTriggerProps)
       role="tab"
       aria-selected={isActive}
       aria-controls={`tabpanel-${value}`}
+      tabIndex={isActive ? 0 : -1}
       disabled={disabled}
       onClick={() => setActiveTab(value)}
       className={cn(
@@ -110,6 +113,9 @@ function TabsTrigger({ value, children, className, disabled }: TabsTriggerProps)
 
 /* ---------------------------------------------------------------------------
  * TabsContent — Panel content for a tab
+ *
+ * Panels stay in the DOM (hidden) so aria-controls always resolves to a
+ * valid element. This follows WAI-ARIA Authoring Practices.
  * --------------------------------------------------------------------------- */
 
 export interface TabsContentProps {
@@ -120,10 +126,16 @@ export interface TabsContentProps {
 
 function TabsContent({ value, children, className }: TabsContentProps) {
   const { activeTab } = useTabsContext();
-  if (activeTab !== value) return null;
+  const isActive = activeTab === value;
 
   return (
-    <div role="tabpanel" id={`tabpanel-${value}`} className={cn("mt-4", className)}>
+    <div
+      role="tabpanel"
+      id={`tabpanel-${value}`}
+      tabIndex={0}
+      hidden={!isActive}
+      className={cn("mt-4", !isActive && "hidden", className)}
+    >
       {children}
     </div>
   );

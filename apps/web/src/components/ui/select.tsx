@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef } from "react";
+import { forwardRef, useId } from "react";
 import { CaretDown } from "@phosphor-icons/react";
 import { cn } from "@/lib/cn";
 
@@ -20,7 +20,8 @@ export interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElemen
 
 const Select = forwardRef<HTMLSelectElement, SelectProps>(
   ({ className, label, error, hint, options, placeholder, id, ...props }, ref) => {
-    const selectId = id || label?.toLowerCase().replace(/\s+/g, "-");
+    const generatedId = useId();
+    const selectId = id || generatedId;
 
     return (
       <div className="flex flex-col gap-1.5">
