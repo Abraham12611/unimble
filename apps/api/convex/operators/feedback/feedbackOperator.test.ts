@@ -44,7 +44,7 @@ function createTestConfig(): OperatorConfiguration {
   return {
     type: "feedback",
     settings: { ...DEFAULT_FEEDBACK_SETTINGS },
-    integrations: [{ provider: "intercom", required: true }],
+    integrations: [{ provider: "intercom", required: true, category: "crm" }],
     schedules: [],
     approvalRequired: false,
   };

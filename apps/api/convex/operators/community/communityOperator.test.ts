@@ -55,7 +55,7 @@ function createTestConfig(): OperatorConfiguration {
       monitorKeywords: ["unimble", "ai operators"],
       brandNames: ["Unimble"],
     },
-    integrations: [{ provider: "twitter", required: true }],
+    integrations: [{ provider: "twitter", required: true, category: "social" }],
     schedules: [],
     approvalRequired: true,
   };

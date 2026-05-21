@@ -39,7 +39,7 @@ function createTestConfig(): OperatorConfiguration {
   return {
     type: "documentation",
     settings: { ...DEFAULT_DOC_SETTINGS, repositoryUrl: "https://github.com/test/repo" },
-    integrations: [{ provider: "github", required: true }],
+    integrations: [{ provider: "github", required: true, category: "code" }],
     schedules: [],
     approvalRequired: false,
   };
