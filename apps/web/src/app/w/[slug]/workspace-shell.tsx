@@ -20,6 +20,7 @@ import {
 import type { ReactNode } from "react";
 import { useState, useCallback, useEffect, useRef } from "react";
 import { cn } from "@/lib/cn";
+import { lockScroll, unlockScroll } from "@/lib/use-scroll-lock";
 import { WorkspaceProvider, useWorkspaceContext } from "@/lib/workspace-context";
 import { WorkspaceSwitcher } from "./workspace-switcher";
 import { CreateWorkspaceModal } from "./create-workspace-modal";
@@ -130,12 +131,12 @@ function MobileSidebarDrawer({ open, onClose }: { open: boolean; onClose: () => 
 
   useEffect(() => {
     if (open) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
+      lockScroll();
     }
     return () => {
-      document.body.style.overflow = "";
+      if (open) {
+        unlockScroll();
+      }
     };
   }, [open]);
 

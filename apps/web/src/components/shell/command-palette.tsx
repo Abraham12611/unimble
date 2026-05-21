@@ -46,20 +46,22 @@ interface CommandItem {
  * --------------------------------------------------------------------------- */
 
 export function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void }) {
+  return <AnimatePresence>{open && <CommandPaletteContent onClose={onClose} />}</AnimatePresence>;
+}
+
+function CommandPaletteContent({ onClose }: { onClose: () => void }) {
   const router = useRouter();
   const { slug } = useWorkspaceContext();
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
 
   // Build command items
   const commands: CommandItem[] = useMemo(() => {
     const nav = (href: string) => () => {
       router.push(`/w/${slug}/${href}`);
-      onCloseRef.current();
+      onClose();
     };
 
     return [
@@ -146,7 +148,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
         action: nav("operators"),
       },
     ];
-  }, [slug, router]);
+  }, [slug, router, onClose]);
 
   // Filter commands by query
   const filtered = useMemo(() => {
@@ -160,28 +162,14 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
     );
   }, [commands, query]);
 
-  // Group by category
-  const grouped = useMemo(() => {
-    const groups: Record<string, CommandItem[]> = {};
-    for (const item of filtered) {
-      if (!groups[item.category]) groups[item.category] = [];
-      groups[item.category].push(item);
-    }
-    return groups;
-  }, [filtered]);
-
   // Flat list for keyboard navigation (alias for readability)
   const flatItems = filtered;
 
-  // Reset state when opening
+  // Focus input after animation on mount
   useEffect(() => {
-    if (open) {
-      setQuery("");
-      setSelectedIndex(0);
-      // Focus input after animation
-      setTimeout(() => inputRef.current?.focus(), 50);
-    }
-  }, [open]);
+    const timer = setTimeout(() => inputRef.current?.focus(), 50);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Scroll selected item into view
   useEffect(() => {
@@ -190,10 +178,10 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
     items[selectedIndex]?.scrollIntoView({ block: "nearest" });
   }, [selectedIndex]);
 
-  // Reset selection when filter changes
-  useEffect(() => {
+  function handleQueryChange(value: string) {
+    setQuery(value);
     setSelectedIndex(0);
-  }, [query]);
+  }
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -227,124 +215,123 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
     recent: "Recent",
   };
 
-  let itemIndex = -1;
-
   return (
-    <AnimatePresence>
-      {open && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh]">
-          {/* Overlay */}
-          <motion.div
-            className="absolute inset-0 bg-[var(--bg-overlay)]"
-            variants={overlay}
-            initial="hidden"
-            animate="visible"
-            exit="exit"
-            onClick={onClose}
-            aria-hidden="true"
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh]">
+      {/* Overlay */}
+      <motion.div
+        className="absolute inset-0 bg-[var(--bg-overlay)]"
+        variants={overlay}
+        initial="hidden"
+        animate="visible"
+        exit="exit"
+        onClick={onClose}
+        aria-hidden="true"
+      />
+
+      {/* Palette */}
+      <motion.div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Command palette"
+        className="relative w-full max-w-lg rounded-[14px] border border-[var(--border-default)] bg-[var(--bg-surface)] shadow-[var(--shadow-popup)] overflow-hidden"
+        initial={{ opacity: 0, scale: 0.96, y: -8 }}
+        animate={{
+          opacity: 1,
+          scale: 1,
+          y: 0,
+          transition: { duration: 0.2, ease: [0.16, 1, 0.3, 1] },
+        }}
+        exit={{ opacity: 0, scale: 0.96, y: -8, transition: { duration: 0.12 } }}
+        onKeyDown={handleKeyDown}
+      >
+        {/* Search input */}
+        <div className="flex items-center gap-3 border-b border-[var(--border-subtle)] px-4 py-3">
+          <MagnifyingGlass size={18} className="shrink-0 text-[var(--text-muted)]" />
+          <input
+            ref={inputRef}
+            type="text"
+            value={query}
+            onChange={(e) => handleQueryChange(e.target.value)}
+            placeholder="Type a command or search…"
+            className="flex-1 bg-transparent text-[14px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
+            aria-label="Search commands"
           />
-
-          {/* Palette */}
-          <motion.div
-            role="dialog"
-            aria-modal="true"
-            aria-label="Command palette"
-            className="relative w-full max-w-lg rounded-[14px] border border-[var(--border-default)] bg-[var(--bg-surface)] shadow-[var(--shadow-popup)] overflow-hidden"
-            initial={{ opacity: 0, scale: 0.96, y: -8 }}
-            animate={{
-              opacity: 1,
-              scale: 1,
-              y: 0,
-              transition: { duration: 0.2, ease: [0.16, 1, 0.3, 1] },
-            }}
-            exit={{ opacity: 0, scale: 0.96, y: -8, transition: { duration: 0.12 } }}
-            onKeyDown={handleKeyDown}
-          >
-            {/* Search input */}
-            <div className="flex items-center gap-3 border-b border-[var(--border-subtle)] px-4 py-3">
-              <MagnifyingGlass size={18} className="shrink-0 text-[var(--text-muted)]" />
-              <input
-                ref={inputRef}
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Type a command or search…"
-                className="flex-1 bg-transparent text-[14px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
-                aria-label="Search commands"
-              />
-              <kbd className="rounded border border-[var(--border-subtle)] bg-[var(--bg-card)] px-1.5 py-0.5 text-[10px] text-[var(--text-muted)]">
-                ESC
-              </kbd>
-            </div>
-
-            {/* Results */}
-            <div ref={listRef} className="max-h-[320px] overflow-y-auto p-2">
-              {flatItems.length === 0 ? (
-                <div className="px-3 py-8 text-center text-[13px] text-[var(--text-muted)]">
-                  No results found for &ldquo;{query}&rdquo;
-                </div>
-              ) : (
-                Object.entries(grouped).map(([category, items]) => (
-                  <div key={category} className="mb-2 last:mb-0">
-                    <div className="px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--text-muted)]">
-                      {categoryLabels[category] || category}
-                    </div>
-                    {items.map((item) => {
-                      itemIndex++;
-                      const isSelected = itemIndex === selectedIndex;
-                      const currentIndex = itemIndex;
-                      const Icon = item.icon;
-
-                      return (
-                        <button
-                          key={item.id}
-                          type="button"
-                          data-cmd-item
-                          onClick={() => item.action()}
-                          onMouseEnter={() => setSelectedIndex(currentIndex)}
-                          className={cn(
-                            "flex w-full items-center gap-3 rounded-[6px] px-3 py-2 text-left transition-colors",
-                            isSelected
-                              ? "bg-[var(--bg-card-hover)] text-[var(--text-primary)]"
-                              : "text-[var(--text-secondary)]"
-                          )}
-                        >
-                          <Icon size={16} className="shrink-0" />
-                          <div className="flex-1 min-w-0">
-                            <div className="text-[13px] truncate">{item.label}</div>
-                            {item.description && (
-                              <div className="text-[11px] text-[var(--text-muted)] truncate">
-                                {item.description}
-                              </div>
-                            )}
-                          </div>
-                          {item.shortcut && (
-                            <kbd className="shrink-0 rounded border border-[var(--border-subtle)] bg-[var(--bg-card)] px-1.5 py-0.5 text-[10px] text-[var(--text-muted)]">
-                              {item.shortcut}
-                            </kbd>
-                          )}
-                          {isSelected && (
-                            <ArrowRight size={12} className="shrink-0 text-[var(--text-muted)]" />
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                ))
-              )}
-            </div>
-
-            {/* Footer */}
-            <div className="flex items-center justify-between border-t border-[var(--border-subtle)] px-4 py-2 text-[11px] text-[var(--text-muted)]">
-              <div className="flex items-center gap-3">
-                <span>↑↓ Navigate</span>
-                <span>↵ Select</span>
-                <span>Esc Close</span>
-              </div>
-            </div>
-          </motion.div>
+          <kbd className="rounded border border-[var(--border-subtle)] bg-[var(--bg-card)] px-1.5 py-0.5 text-[10px] text-[var(--text-muted)]">
+            ESC
+          </kbd>
         </div>
-      )}
-    </AnimatePresence>
+
+        {/* Results — rendered from flatItems to keep index in sync with selectedIndex */}
+        <div ref={listRef} className="max-h-[320px] overflow-y-auto p-2">
+          {flatItems.length === 0 ? (
+            <div className="px-3 py-8 text-center text-[13px] text-[var(--text-muted)]">
+              No results found for &ldquo;{query}&rdquo;
+            </div>
+          ) : (
+            flatItems.map((item, index) => {
+              const Icon = item.icon;
+              const isSelected = index === selectedIndex;
+              // Show category header when category changes
+              const prevCategory = index > 0 ? flatItems[index - 1].category : null;
+              const showHeader = item.category !== prevCategory;
+
+              return (
+                <div key={item.id}>
+                  {showHeader && (
+                    <div
+                      className={cn(
+                        "px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--text-muted)]",
+                        index > 0 && "mt-2"
+                      )}
+                    >
+                      {categoryLabels[item.category] || item.category}
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    data-cmd-item
+                    onClick={() => item.action()}
+                    onMouseEnter={() => setSelectedIndex(index)}
+                    className={cn(
+                      "flex w-full items-center gap-3 rounded-[6px] px-3 py-2 text-left transition-colors",
+                      isSelected
+                        ? "bg-[var(--bg-card-hover)] text-[var(--text-primary)]"
+                        : "text-[var(--text-secondary)]"
+                    )}
+                  >
+                    <Icon size={16} className="shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[13px] truncate">{item.label}</div>
+                      {item.description && (
+                        <div className="text-[11px] text-[var(--text-muted)] truncate">
+                          {item.description}
+                        </div>
+                      )}
+                    </div>
+                    {item.shortcut && (
+                      <kbd className="shrink-0 rounded border border-[var(--border-subtle)] bg-[var(--bg-card)] px-1.5 py-0.5 text-[10px] text-[var(--text-muted)]">
+                        {item.shortcut}
+                      </kbd>
+                    )}
+                    {isSelected && (
+                      <ArrowRight size={12} className="shrink-0 text-[var(--text-muted)]" />
+                    )}
+                  </button>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between border-t border-[var(--border-subtle)] px-4 py-2 text-[11px] text-[var(--text-muted)]">
+          <div className="flex items-center gap-3">
+            <span>↑↓ Navigate</span>
+            <span>↵ Select</span>
+            <span>Esc Close</span>
+          </div>
+        </div>
+      </motion.div>
+    </div>
   );
 }
