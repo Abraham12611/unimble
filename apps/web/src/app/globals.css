@@ -1,26 +1,221 @@
 @import "tailwindcss";
 
+/* ---------------------------------------------------------------------------
+ * Unimble Design System — Theme Tokens
+ *
+ * Dark theme: "Analytical Dashboard" — monochromatic base, semantic accents
+ * Light theme: "Editorial Landing" — warm cream, organic, editorial
+ *
+ * Uses next-themes with class strategy: html.dark / html.light
+ * --------------------------------------------------------------------------- */
+
+/* --- Dark Theme (default) --- */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Backgrounds */
+  --bg-base: #090909;
+  --bg-surface: #111111;
+  --bg-card: #161616;
+  --bg-card-hover: #1c1c1c;
+  --bg-input: #1a1a1a;
+  --bg-overlay: rgba(0, 0, 0, 0.6);
+
+  /* Borders */
+  --border-subtle: #222222;
+  --border-default: #2a2a2a;
+  --border-focus: #3a3a3a;
+
+  /* Text */
+  --text-primary: #f0f0f0;
+  --text-secondary: #888888;
+  --text-muted: #555555;
+  --text-disabled: #3a3a3a;
+  --text-label: #666666;
+
+  /* Semantic — Positive */
+  --semantic-positive-fg: #22c55e;
+  --semantic-positive-bg: rgba(34, 197, 94, 0.1);
+
+  /* Semantic — Negative */
+  --semantic-negative-fg: #ef4444;
+  --semantic-negative-bg: rgba(239, 68, 68, 0.12);
+
+  /* Semantic — Warning */
+  --semantic-warning-fg: #f59e0b;
+  --semantic-warning-bg: rgba(245, 158, 11, 0.12);
+
+  /* Semantic — Info */
+  --semantic-info-fg: #3b82f6;
+  --semantic-info-bg: rgba(59, 130, 246, 0.12);
+
+  /* Semantic — Neutral */
+  --semantic-neutral-fg: #a0a0a0;
+  --semantic-neutral-bg: rgba(160, 160, 160, 0.08);
+
+  /* Chart */
+  --chart-primary: #6366f1;
+  --chart-secondary: #a855f7;
+  --chart-bar: #4b5563;
+  --chart-bar-active: #818cf8;
+
+  /* Shadows */
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  --shadow-card-hover: 0 4px 12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  --shadow-popup: 0 8px 32px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+
+  /* Focus ring */
+  --focus-ring: 0 0 0 2px rgba(99, 102, 241, 0.5);
 }
+
+/* --- Light Theme --- */
+.light {
+  --bg-base: #e9e4d8;
+  --bg-surface: #edeadf;
+  --bg-card: #ffffff;
+  --bg-card-hover: #f5f3ee;
+  --bg-input: #f5f3ee;
+  --bg-overlay: rgba(0, 0, 0, 0.3);
+
+  /* Borders */
+  --border-subtle: rgba(0, 0, 0, 0.06);
+  --border-default: rgba(0, 0, 0, 0.1);
+  --border-focus: rgba(0, 0, 0, 0.18);
+
+  /* Text */
+  --text-primary: #111111;
+  --text-secondary: #888888;
+  --text-muted: #aaaaaa;
+  --text-disabled: #cccccc;
+  --text-label: #666666;
+
+  /* Semantic — same hues, adjusted for light bg */
+  --semantic-positive-fg: #16a34a;
+  --semantic-positive-bg: rgba(34, 197, 94, 0.08);
+
+  --semantic-negative-fg: #dc2626;
+  --semantic-negative-bg: rgba(239, 68, 68, 0.08);
+
+  --semantic-warning-fg: #d97706;
+  --semantic-warning-bg: rgba(245, 158, 11, 0.08);
+
+  --semantic-info-fg: #2563eb;
+  --semantic-info-bg: rgba(59, 130, 246, 0.08);
+
+  --semantic-neutral-fg: #6b7280;
+  --semantic-neutral-bg: rgba(107, 114, 128, 0.08);
+
+  /* Chart */
+  --chart-primary: #6366f1;
+  --chart-secondary: #a855f7;
+  --chart-bar: #d1d5db;
+  --chart-bar-active: #6366f1;
+
+  /* Shadows */
+  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(0, 0, 0, 0.04);
+  --shadow-card-hover: 0 8px 32px rgba(0, 0, 0, 0.12);
+  --shadow-popup: 0 12px 40px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.06);
+  --shadow-inset: inset 0 1px 0 rgba(0, 0, 0, 0.02);
+
+  /* Focus ring */
+  --focus-ring: 0 0 0 2px rgba(99, 102, 241, 0.4);
+}
+
+/* ---------------------------------------------------------------------------
+ * Tailwind v4 Theme Inline — Maps CSS vars to Tailwind utilities
+ * --------------------------------------------------------------------------- */
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  /* Fonts */
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /* Colors — mapped from CSS custom properties */
+  --color-bg-base: var(--bg-base);
+  --color-bg-surface: var(--bg-surface);
+  --color-bg-card: var(--bg-card);
+  --color-bg-card-hover: var(--bg-card-hover);
+  --color-bg-input: var(--bg-input);
+
+  --color-border-subtle: var(--border-subtle);
+  --color-border-default: var(--border-default);
+  --color-border-focus: var(--border-focus);
+
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+  --color-text-disabled: var(--text-disabled);
+  --color-text-label: var(--text-label);
+
+  --color-positive-fg: var(--semantic-positive-fg);
+  --color-positive-bg: var(--semantic-positive-bg);
+  --color-negative-fg: var(--semantic-negative-fg);
+  --color-negative-bg: var(--semantic-negative-bg);
+  --color-warning-fg: var(--semantic-warning-fg);
+  --color-warning-bg: var(--semantic-warning-bg);
+  --color-info-fg: var(--semantic-info-fg);
+  --color-info-bg: var(--semantic-info-bg);
+  --color-neutral-fg: var(--semantic-neutral-fg);
+  --color-neutral-bg: var(--semantic-neutral-bg);
+
+  --color-chart-primary: var(--chart-primary);
+  --color-chart-secondary: var(--chart-secondary);
+  --color-chart-bar: var(--chart-bar);
+  --color-chart-bar-active: var(--chart-bar-active);
+
+  /* Spacing (4px base unit) */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 20px;
+  --spacing-2xl: 24px;
+  --spacing-3xl: 32px;
+  --spacing-4xl: 48px;
+
+  /* Border Radius */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+  --radius-pill: 999px;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+/* ---------------------------------------------------------------------------
+ * Base Styles
+ * --------------------------------------------------------------------------- */
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+/* Focus visible ring for accessibility */
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* Scrollbar styling (dark theme) */
+:root {
+  scrollbar-color: var(--border-default) transparent;
+  scrollbar-width: thin;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-focus);
 }

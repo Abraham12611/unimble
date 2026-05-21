@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { Suspense } from "react";
+import { ThemeProvider } from "@/lib/theme";
 import { Providers } from "./providers";
 import { clerkAppearance } from "./(auth)/clerkAppearance";
 import "./globals.css";
@@ -27,17 +28,23 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
+    <html
+      lang="en"
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      suppressHydrationWarning
+    >
       <body className="min-h-full flex flex-col">
-        <ClerkProvider
-          taskUrls={{ "reset-password": "/reset-password" }}
-          afterSignOutUrl="/sign-in"
-          appearance={clerkAppearance}
-        >
-          <Suspense fallback={null}>
-            <Providers>{children}</Providers>
-          </Suspense>
-        </ClerkProvider>
+        <ThemeProvider>
+          <ClerkProvider
+            taskUrls={{ "reset-password": "/reset-password" }}
+            afterSignOutUrl="/sign-in"
+            appearance={clerkAppearance}
+          >
+            <Suspense fallback={null}>
+              <Providers>{children}</Providers>
+            </Suspense>
+          </ClerkProvider>
+        </ThemeProvider>
       </body>
     </html>
   );
