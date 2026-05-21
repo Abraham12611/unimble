@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { cn } from "@/lib/cn";
 
 export interface AvatarProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -36,7 +37,13 @@ function Avatar({ src, alt, fallback, size = "md", className, ...props }: Avatar
       {...props}
     >
       {src ? (
-        <img src={src} alt={alt || "Avatar"} className="h-full w-full object-cover" />
+        <Image
+          src={src}
+          alt={alt || "Avatar"}
+          fill
+          className="object-cover"
+          sizes={size === "sm" ? "24px" : size === "md" ? "32px" : "40px"}
+        />
       ) : (
         <span className="font-medium text-[var(--text-secondary)]">{initials}</span>
       )}
