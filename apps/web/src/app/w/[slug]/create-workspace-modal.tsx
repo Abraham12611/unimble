@@ -4,7 +4,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { anyApi } from "convex/server";
 import { useMutation } from "convex/react";
-import { X } from "@phosphor-icons/react";
+import { Modal } from "@/components/ui/modal";
+import { Input, Textarea } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 
 function slugify(input: string): string {
   return input
@@ -46,101 +48,54 @@ export function CreateWorkspaceModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      onKeyDown={(e) => {
-        if (e.key === "Escape") onClose();
-      }}
-    >
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/60"
-        onClick={onClose}
-        role="button"
-        tabIndex={-1}
-        aria-label="Close modal"
-      />
+    <Modal open={true} onClose={onClose} title="Create Workspace" size="md">
+      {error && (
+        <div className="mb-4 rounded-[6px] border border-[var(--semantic-negative-fg)]/25 bg-[var(--semantic-negative-bg)] p-2 text-[12px] text-[var(--semantic-negative-fg)]">
+          {error}
+        </div>
+      )}
 
-      {/* Modal */}
-      <div className="relative w-full max-w-md rounded-[14px] border border-[#2A2A2A] bg-[#161616] p-6 shadow-[0_8px_32px_rgba(0,0,0,0.7),0_0_0_1px_rgba(255,255,255,0.06)]">
-        <div className="flex items-center justify-between">
-          <h2 className="text-[15px] font-medium text-[#F0F0F0]">Create Workspace</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex h-7 w-7 items-center justify-center rounded-[6px] text-[#555555] transition-colors hover:bg-[#1C1C1C] hover:text-[#F0F0F0]"
-          >
-            <X size={16} />
-          </button>
+      <div className="space-y-4">
+        <div>
+          <Input
+            label="Workspace Name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleCreate();
+            }}
+            placeholder="My Workspace"
+            autoFocus
+          />
+          {slug ? (
+            <p className="mt-1 text-[11px] text-[var(--text-muted)]">
+              URL: unimble.app/w/<span className="text-[var(--text-secondary)]">{slug}</span>
+            </p>
+          ) : name.trim().length > 0 ? (
+            <p className="mt-1 text-[11px] text-[var(--semantic-negative-fg)]">
+              Name must contain at least one letter or number for the URL.
+            </p>
+          ) : null}
         </div>
 
-        {error && (
-          <div className="mt-3 rounded-[6px] border border-[rgba(239,68,68,0.25)] bg-[rgba(239,68,68,0.08)] p-2 text-[12px] text-[#EF4444]">
-            {error}
-          </div>
-        )}
-
-        <div className="mt-4 space-y-4">
-          <div className="space-y-1">
-            <label htmlFor="new-ws-name" className="text-[12px] text-[#666666]">
-              Workspace Name
-            </label>
-            <input
-              id="new-ws-name"
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleCreate();
-              }}
-              placeholder="My Workspace"
-              autoFocus
-              className="w-full rounded-[6px] border border-[#2A2A2A] bg-[#1A1A1A] px-3 py-2 text-[13px] text-[#F0F0F0] outline-none placeholder:text-[#555555] focus:border-[#3A3A3A]"
-            />
-            {slug ? (
-              <p className="text-[11px] text-[#555555]">
-                URL: unimble.app/w/<span className="text-[#888888]">{slug}</span>
-              </p>
-            ) : name.trim().length > 0 ? (
-              <p className="text-[11px] text-[#EF4444]">
-                Name must contain at least one letter or number for the URL.
-              </p>
-            ) : null}
-          </div>
-
-          <div className="space-y-1">
-            <label htmlFor="new-ws-desc" className="text-[12px] text-[#666666]">
-              Description <span className="text-[#555555]">(optional)</span>
-            </label>
-            <textarea
-              id="new-ws-desc"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="What is this workspace for?"
-              rows={2}
-              className="w-full resize-none rounded-[6px] border border-[#2A2A2A] bg-[#1A1A1A] px-3 py-2 text-[13px] text-[#F0F0F0] outline-none placeholder:text-[#555555] focus:border-[#3A3A3A]"
-            />
-          </div>
-        </div>
-
-        <div className="mt-5 flex items-center justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-[6px] px-4 py-2 text-[13px] text-[#888888] transition-colors hover:text-[#F0F0F0]"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleCreate}
-            disabled={!canCreate}
-            className="rounded-[6px] border border-[#2A2A2A] bg-[#1C1C1C] px-4 py-2 text-[13px] font-medium text-[#F0F0F0] transition-colors hover:bg-[#222222] disabled:cursor-not-allowed disabled:text-[#555555]"
-          >
-            {creating ? "Creating…" : "Create Workspace"}
-          </button>
-        </div>
+        <Textarea
+          label="Description"
+          hint="Optional — what is this workspace for?"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="What is this workspace for?"
+          rows={2}
+        />
       </div>
-    </div>
+
+      <div className="mt-5 flex items-center justify-end gap-2">
+        <Button variant="ghost" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button onClick={handleCreate} disabled={!canCreate} loading={creating}>
+          Create Workspace
+        </Button>
+      </div>
+    </Modal>
   );
 }
