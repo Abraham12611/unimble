@@ -83,19 +83,22 @@
 
 ## Test Coverage Summary
 
-| Operator                               | Tests     | Status          |
+| Test Suite                             | Tests     | Status          |
 | -------------------------------------- | --------- | --------------- |
-| Framework (base, registry, deployment) | 51        | ✅ Pass         |
+| Operator Framework (operators.test.ts) | 51        | ✅ Pass         |
 | Content Operator                       | 35        | ✅ Pass         |
 | Growth Operator                        | 45        | ✅ Pass         |
 | Community Operator                     | 53        | ✅ Pass         |
 | Feedback Operator                      | 46        | ✅ Pass         |
 | Documentation Operator                 | 32        | ✅ Pass         |
-| Workflow Engine                        | 57        | ✅ Pass         |
-| Agent Runtime                          | 163       | ✅ Pass         |
-| All (combined)                         | 469       | ✅ Pass         |
-| Other (validators, RBAC, etc.)         | 198       | ✅ Pass         |
-| **Total**                              | **1,149** | **✅ All Pass** |
+| Combined Integration (all.test.ts)     | 469       | ✅ Pass         |
+| Agent Runtime (9 test files)           | 186       | ✅ Pass         |
+| Workflow Engine (6 test files)         | 94        | ✅ Pass         |
+| Infrastructure (validators, RBAC, etc) | 138       | ✅ Pass         |
+| **Total (31 test files)**              | **1,149** | **✅ All Pass** |
+
+> The combined integration file (`all.test.ts`) exercises operators, agents,
+> and engine together. Individual test files provide focused unit coverage.
 
 ---
 
