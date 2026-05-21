@@ -88,7 +88,7 @@ export default function OperatorDetailPage() {
     successRate: 98,
     avgDurationMs: 272000,
     costThisWeek: 18.5,
-    nextRunAt: Date.now() + 86400000 * 2,
+    nextRunAt: 0, // TODO: Replace with real Convex query data
     nextWorkflow: "Weekly Content Pipeline",
   };
 
