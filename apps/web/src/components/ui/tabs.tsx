@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useCallback } from "react";
+import { createContext, useContext, useState, useCallback, useRef } from "react";
 import { cn } from "@/lib/cn";
 
 /* ---------------------------------------------------------------------------
@@ -9,7 +9,10 @@ import { cn } from "@/lib/cn";
  * Active tab: card background, border, primary text, weight 500
  * Inactive tab: transparent, muted text, weight 400
  *
- * Inactive panels remain in the DOM (hidden) so aria-controls always resolves.
+ * Keyboard navigation follows WAI-ARIA Authoring Practices:
+ * - ArrowRight/ArrowLeft: move focus between triggers
+ * - Home/End: move to first/last trigger
+ * - Inactive panels stay in DOM (hidden) so aria-controls always resolves
  * --------------------------------------------------------------------------- */
 
 interface TabsContextValue {
@@ -56,13 +59,51 @@ function Tabs({ defaultValue, value, onValueChange, children, className }: TabsP
 }
 
 /* ---------------------------------------------------------------------------
- * TabsList — Container for tab triggers
+ * TabsList — Container for tab triggers with arrow-key navigation
  * --------------------------------------------------------------------------- */
 
 function TabsList({ className, children }: { className?: string; children: React.ReactNode }) {
+  const listRef = useRef<HTMLDivElement>(null);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    const list = listRef.current;
+    if (!list) return;
+
+    const triggers = Array.from(
+      list.querySelectorAll<HTMLButtonElement>('[role="tab"]:not([disabled])')
+    );
+    const currentIndex = triggers.findIndex((t) => t === document.activeElement);
+    if (currentIndex === -1) return;
+
+    let nextIndex: number | null = null;
+
+    switch (e.key) {
+      case "ArrowRight":
+        nextIndex = (currentIndex + 1) % triggers.length;
+        break;
+      case "ArrowLeft":
+        nextIndex = (currentIndex - 1 + triggers.length) % triggers.length;
+        break;
+      case "Home":
+        nextIndex = 0;
+        break;
+      case "End":
+        nextIndex = triggers.length - 1;
+        break;
+      default:
+        return;
+    }
+
+    e.preventDefault();
+    triggers[nextIndex].focus();
+    triggers[nextIndex].click();
+  }, []);
+
   return (
     <div
+      ref={listRef}
       role="tablist"
+      onKeyDown={handleKeyDown}
       className={cn(
         "flex items-center gap-1 border-b border-[var(--border-subtle)] pb-px",
         className

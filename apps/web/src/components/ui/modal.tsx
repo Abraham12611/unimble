@@ -29,8 +29,12 @@ const sizeClasses = {
   lg: "max-w-lg",
 } as const;
 
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 /**
- * Modal — Accessible dialog with overlay, animations, and keyboard support.
+ * Modal — Accessible dialog with overlay, focus trap, and keyboard support.
+ * Implements WAI-ARIA dialog pattern with full focus cycling.
  */
 function Modal({
   open,
@@ -45,10 +49,38 @@ function Modal({
   const titleId = useId();
   const descriptionId = useId();
 
-  // Close on Escape
+  // Handle Escape and focus trap (Tab/Shift-Tab cycling)
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+
+      // Focus trap: cycle Tab within the dialog
+      if (e.key === "Tab" && contentRef.current) {
+        const focusableElements = Array.from(
+          contentRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)
+        );
+        if (focusableElements.length === 0) return;
+
+        const firstElement = focusableElements[0];
+        const lastElement = focusableElements[focusableElements.length - 1];
+
+        if (e.shiftKey) {
+          // Shift-Tab: if on first element, wrap to last
+          if (document.activeElement === firstElement) {
+            e.preventDefault();
+            lastElement.focus();
+          }
+        } else {
+          // Tab: if on last element, wrap to first
+          if (document.activeElement === lastElement) {
+            e.preventDefault();
+            firstElement.focus();
+          }
+        }
+      }
     },
     [onClose]
   );
@@ -66,12 +98,10 @@ function Modal({
     };
   }, [open, handleKeyDown]);
 
-  // Focus trap — focus first focusable element on open
+  // Focus first focusable element on open
   useEffect(() => {
     if (open && contentRef.current) {
-      const focusable = contentRef.current.querySelector<HTMLElement>(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-      );
+      const focusable = contentRef.current.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
       focusable?.focus();
     }
   }, [open]);

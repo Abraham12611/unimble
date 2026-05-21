@@ -39,7 +39,7 @@ function StatCard({
   sparkline,
   className,
 }: StatCardProps) {
-  const isPositive = delta !== undefined && delta >= 0;
+  const isPositive = delta !== undefined && delta > 0;
   const isNegative = delta !== undefined && delta < 0;
 
   return (
@@ -102,10 +102,11 @@ function StatCard({
             className={cn(
               "text-[12px] font-medium",
               isPositive && "text-[var(--semantic-positive-fg)]",
-              isNegative && "text-[var(--semantic-negative-fg)]"
+              isNegative && "text-[var(--semantic-negative-fg)]",
+              !isPositive && !isNegative && "text-[var(--text-muted)]"
             )}
           >
-            {Math.abs(delta)}%
+            {delta === 0 ? "0%" : `${Math.abs(delta)}%`}
           </span>
           {deltaLabel && <span className="text-[12px] text-[var(--text-muted)]">{deltaLabel}</span>}
         </div>
