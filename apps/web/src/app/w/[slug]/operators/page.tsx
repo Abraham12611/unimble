@@ -50,9 +50,9 @@ interface OperatorSummary {
 // ---------------------------------------------------------------------------
 
 const STATUS_COLORS: Record<OperatorStatus, { dot: string; text: string }> = {
-  active: { dot: "bg-[#22C55E]", text: "text-[#22C55E]" },
-  paused: { dot: "bg-[#F59E0B]", text: "text-[#F59E0B]" },
-  error: { dot: "bg-[#EF4444]", text: "text-[#EF4444]" },
+  active: { dot: "bg-[var(--semantic-positive-fg)]", text: "text-[var(--semantic-positive-fg)]" },
+  paused: { dot: "bg-[var(--semantic-warning-fg)]", text: "text-[var(--semantic-warning-fg)]" },
+  error: { dot: "bg-[var(--semantic-negative-fg)]", text: "text-[var(--semantic-negative-fg)]" },
 };
 
 const TYPE_LABELS: Record<OperatorType, string> = {
@@ -77,7 +77,62 @@ export default function OperatorsListPage() {
   const [searchQuery, setSearchQuery] = useState("");
 
   // TODO: Replace with real Convex query
-  const operators: OperatorSummary[] = [];
+  // Static timestamps to avoid impure Date.now() during render
+  const operators: OperatorSummary[] = [
+    {
+      id: "op_content_1",
+      name: "Content Operator",
+      type: "content",
+      status: "active",
+      lastRunAt: 1716200000000,
+      lastRunStatus: "success",
+      nextRunAt: 1716300000000,
+      executionsThisWeek: 47,
+      successRate: 96,
+    },
+    {
+      id: "op_growth_1",
+      name: "Growth Operator",
+      type: "growth",
+      status: "active",
+      lastRunAt: 1716190000000,
+      lastRunStatus: "success",
+      nextRunAt: 1716220000000,
+      executionsThisWeek: 32,
+      successRate: 91,
+    },
+    {
+      id: "op_community_1",
+      name: "Community Operator",
+      type: "community",
+      status: "paused",
+      lastRunAt: 1716100000000,
+      lastRunStatus: "success",
+      executionsThisWeek: 18,
+      successRate: 100,
+    },
+    {
+      id: "op_feedback_1",
+      name: "Feedback Operator",
+      type: "feedback",
+      status: "active",
+      lastRunAt: 1716150000000,
+      lastRunStatus: "success",
+      nextRunAt: 1716350000000,
+      executionsThisWeek: 24,
+      successRate: 88,
+    },
+    {
+      id: "op_docs_1",
+      name: "Documentation Operator",
+      type: "documentation",
+      status: "error",
+      lastRunAt: 1716195000000,
+      lastRunStatus: "failed",
+      executionsThisWeek: 6,
+      successRate: 67,
+    },
+  ];
 
   const filteredOperators = operators.filter((op) => {
     if (statusFilter !== "all" && op.status !== statusFilter) return false;
@@ -91,14 +146,16 @@ export default function OperatorsListPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-[18px] font-medium leading-snug text-[#F0F0F0]">Operators</h1>
-          <p className="mt-1 text-[12px] text-[#888888]">
+          <h1 className="text-[18px] font-medium leading-snug text-[var(--text-primary)]">
+            Operators
+          </h1>
+          <p className="mt-1 text-[12px] text-[var(--text-secondary)]">
             {operators.length} operator{operators.length !== 1 ? "s" : ""} deployed
           </p>
         </div>
         <Link
           href={`/w/${slug}/operators/deploy`}
-          className="inline-flex items-center gap-2 rounded-[6px] border border-[#2A2A2A] bg-[#161616] px-4 py-2 text-[13px] font-medium text-[#F0F0F0] transition-colors hover:bg-[#1C1C1C]"
+          className="inline-flex items-center gap-2 rounded-[6px] border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2 text-[13px] font-medium text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-card-hover)]"
         >
           <Plus size={14} />
           Deploy Operator
@@ -111,14 +168,14 @@ export default function OperatorsListPage() {
         <div className="relative flex-1 max-w-xs">
           <MagnifyingGlass
             size={14}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-[#555555]"
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]"
           />
           <input
             type="text"
             placeholder="Search operators..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full rounded-[6px] border border-[#2A2A2A] bg-[#1A1A1A] py-2 pl-9 pr-3 text-[13px] text-[#F0F0F0] placeholder-[#555555] outline-none focus:border-[#3A3A3A]"
+            className="w-full rounded-[6px] border border-[var(--border-default)] bg-[var(--bg-input)] py-2 pl-9 pr-3 text-[13px] text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--border-focus)]"
           />
         </div>
 
@@ -126,7 +183,7 @@ export default function OperatorsListPage() {
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value as OperatorStatus | "all")}
-          className="rounded-[6px] border border-[#2A2A2A] bg-[#1A1A1A] px-3 py-2 text-[13px] text-[#F0F0F0] outline-none focus:border-[#3A3A3A]"
+          className="rounded-[6px] border border-[var(--border-default)] bg-[var(--bg-input)] px-3 py-2 text-[13px] text-[var(--text-primary)] outline-none focus:border-[var(--border-focus)]"
         >
           <option value="all">All Status</option>
           <option value="active">Active</option>
@@ -138,7 +195,7 @@ export default function OperatorsListPage() {
         <select
           value={typeFilter}
           onChange={(e) => setTypeFilter(e.target.value as OperatorType | "all")}
-          className="rounded-[6px] border border-[#2A2A2A] bg-[#1A1A1A] px-3 py-2 text-[13px] text-[#F0F0F0] outline-none focus:border-[#3A3A3A]"
+          className="rounded-[6px] border border-[var(--border-default)] bg-[var(--bg-input)] px-3 py-2 text-[13px] text-[var(--text-primary)] outline-none focus:border-[var(--border-focus)]"
         >
           <option value="all">All Types</option>
           <option value="content">Content</option>
@@ -150,13 +207,13 @@ export default function OperatorsListPage() {
         </select>
 
         {/* View Toggle */}
-        <div className="flex items-center rounded-[6px] border border-[#2A2A2A] bg-[#1A1A1A]">
+        <div className="flex items-center rounded-[6px] border border-[var(--border-default)] bg-[var(--bg-input)]">
           <button
             onClick={() => setViewMode("grid")}
             className={`flex h-8 w-8 items-center justify-center rounded-l-[5px] transition-colors ${
               viewMode === "grid"
-                ? "bg-[#1C1C1C] text-[#F0F0F0]"
-                : "text-[#555555] hover:text-[#888888]"
+                ? "bg-[var(--bg-card-hover)] text-[var(--text-primary)]"
+                : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
             }`}
             title="Grid view"
           >
@@ -166,8 +223,8 @@ export default function OperatorsListPage() {
             onClick={() => setViewMode("list")}
             className={`flex h-8 w-8 items-center justify-center rounded-r-[5px] transition-colors ${
               viewMode === "list"
-                ? "bg-[#1C1C1C] text-[#F0F0F0]"
-                : "text-[#555555] hover:text-[#888888]"
+                ? "bg-[var(--bg-card-hover)] text-[var(--text-primary)]"
+                : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
             }`}
             title="List view"
           >
@@ -204,19 +261,19 @@ function OperatorCard({ operator, slug }: { operator: OperatorSummary; slug: str
   return (
     <Link
       href={`/w/${slug}/operators/${operator.id}`}
-      className="group rounded-[14px] border border-[#222222] bg-[#161616] p-5 transition-colors hover:bg-[#1C1C1C]"
+      className="group rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-card)] p-5 transition-colors hover:bg-[var(--bg-card-hover)]"
     >
       {/* Header */}
       <div className="flex items-start justify-between">
-        <div className="flex h-9 w-9 items-center justify-center rounded-[10px] border border-[#2A2A2A] bg-[#1A1A1A]">
-          <Robot size={18} className="text-[#888888]" />
+        <div className="flex h-9 w-9 items-center justify-center rounded-[10px] border border-[var(--border-default)] bg-[var(--bg-input)]">
+          <Robot size={18} className="text-[var(--text-secondary)]" />
         </div>
         <button
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
           }}
-          className="flex h-7 w-7 items-center justify-center rounded-[6px] text-[#555555] opacity-0 transition-opacity hover:bg-[#1C1C1C] hover:text-[#888888] group-hover:opacity-100"
+          className="flex h-7 w-7 items-center justify-center rounded-[6px] text-[var(--text-muted)] opacity-0 transition-opacity hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-secondary)] group-hover:opacity-100"
         >
           <DotsThree size={16} weight="bold" />
         </button>
@@ -224,7 +281,7 @@ function OperatorCard({ operator, slug }: { operator: OperatorSummary; slug: str
 
       {/* Name & Status */}
       <div className="mt-3">
-        <div className="text-[15px] font-medium text-[#F0F0F0]">{operator.name}</div>
+        <div className="text-[15px] font-medium text-[var(--text-primary)]">{operator.name}</div>
         <div className="mt-1 flex items-center gap-1.5">
           <span className={`h-1.5 w-1.5 rounded-full ${statusColor.dot}`} />
           <span className={`text-[12px] capitalize ${statusColor.text}`}>{operator.status}</span>
@@ -232,35 +289,35 @@ function OperatorCard({ operator, slug }: { operator: OperatorSummary; slug: str
       </div>
 
       {/* Meta */}
-      <div className="mt-4 space-y-1.5 border-t border-[#222222] pt-3">
+      <div className="mt-4 space-y-1.5 border-t border-[var(--border-subtle)] pt-3">
         <div className="flex items-center justify-between text-[12px]">
-          <span className="text-[#555555]">Type</span>
-          <span className="text-[#888888]">{TYPE_LABELS[operator.type]}</span>
+          <span className="text-[var(--text-muted)]">Type</span>
+          <span className="text-[var(--text-secondary)]">{TYPE_LABELS[operator.type]}</span>
         </div>
         <div className="flex items-center justify-between text-[12px]">
-          <span className="text-[#555555]">Last run</span>
-          <span className="text-[#888888]">
+          <span className="text-[var(--text-muted)]">Last run</span>
+          <span className="text-[var(--text-secondary)]">
             {operator.lastRunAt ? formatRelativeTime(operator.lastRunAt) : "Never"}
           </span>
         </div>
         <div className="flex items-center justify-between text-[12px]">
-          <span className="text-[#555555]">Executions (7d)</span>
-          <span className="text-[#888888]">{operator.executionsThisWeek}</span>
+          <span className="text-[var(--text-muted)]">Executions (7d)</span>
+          <span className="text-[var(--text-secondary)]">{operator.executionsThisWeek}</span>
         </div>
         <div className="flex items-center justify-between text-[12px]">
-          <span className="text-[#555555]">Success rate</span>
-          <span className="text-[#888888]">{operator.successRate}%</span>
+          <span className="text-[var(--text-muted)]">Success rate</span>
+          <span className="text-[var(--text-secondary)]">{operator.successRate}%</span>
         </div>
       </div>
 
       {/* Actions */}
-      <div className="mt-4 flex items-center gap-2 border-t border-[#222222] pt-3">
+      <div className="mt-4 flex items-center gap-2 border-t border-[var(--border-subtle)] pt-3">
         <button
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
           }}
-          className="inline-flex items-center gap-1 rounded-[6px] border border-[#2A2A2A] px-2.5 py-1.5 text-[12px] text-[#888888] transition-colors hover:bg-[#1C1C1C] hover:text-[#F0F0F0]"
+          className="inline-flex items-center gap-1 rounded-[6px] border border-[var(--border-default)] px-2.5 py-1.5 text-[12px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]"
         >
           <Play size={12} /> Run
         </button>
@@ -269,7 +326,7 @@ function OperatorCard({ operator, slug }: { operator: OperatorSummary; slug: str
             e.preventDefault();
             e.stopPropagation();
           }}
-          className="inline-flex items-center gap-1 rounded-[6px] border border-[#2A2A2A] px-2.5 py-1.5 text-[12px] text-[#888888] transition-colors hover:bg-[#1C1C1C] hover:text-[#F0F0F0]"
+          className="inline-flex items-center gap-1 rounded-[6px] border border-[var(--border-default)] px-2.5 py-1.5 text-[12px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]"
         >
           <Pause size={12} /> Pause
         </button>
@@ -278,7 +335,7 @@ function OperatorCard({ operator, slug }: { operator: OperatorSummary; slug: str
             e.preventDefault();
             e.stopPropagation();
           }}
-          className="ml-auto inline-flex items-center gap-1 rounded-[6px] border border-[#2A2A2A] px-2.5 py-1.5 text-[12px] text-[#888888] transition-colors hover:bg-[#1C1C1C] hover:text-[#F0F0F0]"
+          className="ml-auto inline-flex items-center gap-1 rounded-[6px] border border-[var(--border-default)] px-2.5 py-1.5 text-[12px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]"
         >
           <Gear size={12} />
         </button>
@@ -289,29 +346,29 @@ function OperatorCard({ operator, slug }: { operator: OperatorSummary; slug: str
 
 function OperatorTable({ operators, slug }: { operators: OperatorSummary[]; slug: string }) {
   return (
-    <div className="overflow-hidden rounded-[14px] border border-[#222222] bg-[#161616]">
+    <div className="overflow-hidden rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-card)]">
       <table className="w-full">
         <thead>
-          <tr className="border-b border-[#222222]">
-            <th className="px-4 py-3 text-left text-[11px] font-medium uppercase tracking-[0.04em] text-[#555555]">
+          <tr className="border-b border-[var(--border-subtle)]">
+            <th className="px-4 py-3 text-left text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--text-muted)]">
               Name
             </th>
-            <th className="px-4 py-3 text-left text-[11px] font-medium uppercase tracking-[0.04em] text-[#555555]">
+            <th className="px-4 py-3 text-left text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--text-muted)]">
               Type
             </th>
-            <th className="px-4 py-3 text-left text-[11px] font-medium uppercase tracking-[0.04em] text-[#555555]">
+            <th className="px-4 py-3 text-left text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--text-muted)]">
               Status
             </th>
-            <th className="px-4 py-3 text-left text-[11px] font-medium uppercase tracking-[0.04em] text-[#555555]">
+            <th className="px-4 py-3 text-left text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--text-muted)]">
               Last Run
             </th>
-            <th className="px-4 py-3 text-right text-[11px] font-medium uppercase tracking-[0.04em] text-[#555555]">
+            <th className="px-4 py-3 text-right text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--text-muted)]">
               Executions
             </th>
-            <th className="px-4 py-3 text-right text-[11px] font-medium uppercase tracking-[0.04em] text-[#555555]">
+            <th className="px-4 py-3 text-right text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--text-muted)]">
               Success
             </th>
-            <th className="px-4 py-3 text-right text-[11px] font-medium uppercase tracking-[0.04em] text-[#555555]">
+            <th className="px-4 py-3 text-right text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--text-muted)]">
               Actions
             </th>
           </tr>
@@ -322,15 +379,19 @@ function OperatorTable({ operators, slug }: { operators: OperatorSummary[]; slug
             return (
               <tr
                 key={op.id}
-                className="border-b border-[#222222] last:border-0 transition-colors hover:bg-[#1C1C1C]"
+                className="border-b border-[var(--border-subtle)] last:border-0 transition-colors hover:bg-[var(--bg-card-hover)]"
               >
                 <td className="px-4 py-3">
                   <Link href={`/w/${slug}/operators/${op.id}`} className="flex items-center gap-2">
-                    <Robot size={16} className="text-[#888888]" />
-                    <span className="text-[13px] font-medium text-[#F0F0F0]">{op.name}</span>
+                    <Robot size={16} className="text-[var(--text-secondary)]" />
+                    <span className="text-[13px] font-medium text-[var(--text-primary)]">
+                      {op.name}
+                    </span>
                   </Link>
                 </td>
-                <td className="px-4 py-3 text-[12px] text-[#888888]">{TYPE_LABELS[op.type]}</td>
+                <td className="px-4 py-3 text-[12px] text-[var(--text-secondary)]">
+                  {TYPE_LABELS[op.type]}
+                </td>
                 <td className="px-4 py-3">
                   <span className="inline-flex items-center gap-1.5">
                     <span className={`h-1.5 w-1.5 rounded-full ${statusColor.dot}`} />
@@ -339,24 +400,24 @@ function OperatorTable({ operators, slug }: { operators: OperatorSummary[]; slug
                     </span>
                   </span>
                 </td>
-                <td className="px-4 py-3 text-[12px] text-[#888888]">
+                <td className="px-4 py-3 text-[12px] text-[var(--text-secondary)]">
                   {op.lastRunAt ? formatRelativeTime(op.lastRunAt) : "—"}
                 </td>
-                <td className="px-4 py-3 text-right text-[12px] text-[#888888]">
+                <td className="px-4 py-3 text-right text-[12px] text-[var(--text-secondary)]">
                   {op.executionsThisWeek}
                 </td>
-                <td className="px-4 py-3 text-right text-[12px] text-[#888888]">
+                <td className="px-4 py-3 text-right text-[12px] text-[var(--text-secondary)]">
                   {op.successRate}%
                 </td>
                 <td className="px-4 py-3 text-right">
                   <div className="flex items-center justify-end gap-1">
-                    <button className="flex h-7 w-7 items-center justify-center rounded-[6px] text-[#555555] hover:bg-[#222222] hover:text-[#888888]">
+                    <button className="flex h-7 w-7 items-center justify-center rounded-[6px] text-[var(--text-muted)] hover:bg-[var(--border-subtle)] hover:text-[var(--text-secondary)]">
                       <Play size={14} />
                     </button>
-                    <button className="flex h-7 w-7 items-center justify-center rounded-[6px] text-[#555555] hover:bg-[#222222] hover:text-[#888888]">
+                    <button className="flex h-7 w-7 items-center justify-center rounded-[6px] text-[var(--text-muted)] hover:bg-[var(--border-subtle)] hover:text-[var(--text-secondary)]">
                       <Pause size={14} />
                     </button>
-                    <button className="flex h-7 w-7 items-center justify-center rounded-[6px] text-[#555555] hover:bg-[#222222] hover:text-[#888888]">
+                    <button className="flex h-7 w-7 items-center justify-center rounded-[6px] text-[var(--text-muted)] hover:bg-[var(--border-subtle)] hover:text-[var(--text-secondary)]">
                       <Gear size={14} />
                     </button>
                   </div>
@@ -372,17 +433,17 @@ function OperatorTable({ operators, slug }: { operators: OperatorSummary[]; slug
 
 function EmptyState({ slug }: { slug: string }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-[14px] border border-[#222222] bg-[#161616] px-6 py-16 text-center">
-      <div className="flex h-14 w-14 items-center justify-center rounded-[14px] border border-[#2A2A2A] bg-[#1A1A1A]">
-        <Robot size={28} className="text-[#555555]" />
+    <div className="flex flex-col items-center justify-center rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-card)] px-6 py-16 text-center">
+      <div className="flex h-14 w-14 items-center justify-center rounded-[14px] border border-[var(--border-default)] bg-[var(--bg-input)]">
+        <Robot size={28} className="text-[var(--text-muted)]" />
       </div>
-      <h2 className="mt-4 text-[15px] font-medium text-[#F0F0F0]">No operators yet</h2>
-      <p className="mt-1.5 max-w-sm text-[12px] text-[#555555]">
+      <h2 className="mt-4 text-[15px] font-medium text-[var(--text-primary)]">No operators yet</h2>
+      <p className="mt-1.5 max-w-sm text-[12px] text-[var(--text-muted)]">
         Deploy your first AI operator to automate content, growth, community, or feedback.
       </p>
       <Link
         href={`/w/${slug}/operators/deploy`}
-        className="mt-5 inline-flex items-center gap-2 rounded-[6px] border border-[#2A2A2A] bg-[#161616] px-4 py-2 text-[13px] font-medium text-[#F0F0F0] transition-colors hover:bg-[#1C1C1C]"
+        className="mt-5 inline-flex items-center gap-2 rounded-[6px] border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2 text-[13px] font-medium text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-card-hover)]"
       >
         <Plus size={14} />
         Deploy Operator
@@ -393,10 +454,12 @@ function EmptyState({ slug }: { slug: string }) {
 
 function NoResultsState() {
   return (
-    <div className="flex flex-col items-center justify-center rounded-[14px] border border-[#222222] bg-[#161616] px-6 py-12 text-center">
-      <MagnifyingGlass size={24} className="text-[#555555]" />
-      <h2 className="mt-3 text-[15px] font-medium text-[#F0F0F0]">No matching operators</h2>
-      <p className="mt-1.5 max-w-sm text-[12px] text-[#555555]">
+    <div className="flex flex-col items-center justify-center rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-card)] px-6 py-12 text-center">
+      <MagnifyingGlass size={24} className="text-[var(--text-muted)]" />
+      <h2 className="mt-3 text-[15px] font-medium text-[var(--text-primary)]">
+        No matching operators
+      </h2>
+      <p className="mt-1.5 max-w-sm text-[12px] text-[var(--text-muted)]">
         Try adjusting your search or filters to find what you&apos;re looking for.
       </p>
     </div>
