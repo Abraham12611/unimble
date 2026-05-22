@@ -32,12 +32,12 @@ import {
   ChatDots,
 } from "@phosphor-icons/react";
 import { Badge, Button } from "@/components/ui";
+import { type ExecutionStatus, STATUS_CONFIG } from "@/lib/executions";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-type ExecutionStatus = "running" | "completed" | "failed" | "cancelled";
 type StepStatus = "completed" | "failed" | "running" | "pending" | "skipped";
 
 interface ExecutionStep {
@@ -83,16 +83,6 @@ interface ApprovalGate {
 // ---------------------------------------------------------------------------
 // Status config
 // ---------------------------------------------------------------------------
-
-const STATUS_CONFIG: Record<
-  ExecutionStatus,
-  { badge: "info" | "positive" | "negative" | "neutral"; label: string; icon: typeof CheckCircle }
-> = {
-  running: { badge: "info", icon: Lightning, label: "Running" },
-  completed: { badge: "positive", icon: CheckCircle, label: "Completed" },
-  failed: { badge: "negative", icon: XCircle, label: "Failed" },
-  cancelled: { badge: "neutral", icon: XCircle, label: "Cancelled" },
-};
 
 const STEP_STATUS_CONFIG: Record<
   StepStatus,
@@ -471,7 +461,7 @@ function StepRow({ step, isLast }: { step: ExecutionStep; isLast: boolean }) {
               <div className="space-y-1.5">
                 {step.llmCalls.map((call, i) => (
                   <div
-                    key={i}
+                    key={`${call.model}-${call.latencyMs}-${i}`}
                     className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-[6px] bg-[var(--bg-input)] px-3 py-2 text-[11px]"
                   >
                     <span className="font-mono font-medium text-[var(--text-primary)]">
@@ -497,7 +487,7 @@ function StepRow({ step, isLast }: { step: ExecutionStep; isLast: boolean }) {
               <div className="space-y-1.5">
                 {step.toolCalls.map((call, i) => (
                   <div
-                    key={i}
+                    key={`${call.tool}-${call.latencyMs}-${i}`}
                     className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-[6px] bg-[var(--bg-input)] px-3 py-2 text-[11px]"
                   >
                     <span className="font-mono font-medium text-[var(--text-primary)]">
@@ -526,6 +516,7 @@ function StepRow({ step, isLast }: { step: ExecutionStep; isLast: boolean }) {
 // ---------------------------------------------------------------------------
 
 function ApprovalCard({ approval }: { approval: ApprovalGate }) {
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
   const isApproved = approval.status === "approved";
   const isRejected = approval.status === "rejected";
   const isPending = approval.status === "pending";
@@ -579,15 +570,34 @@ function ApprovalCard({ approval }: { approval: ApprovalGate }) {
 
       {/* Pending approval actions */}
       {isPending && (
-        <div className="mt-4 flex items-center gap-2 border-t border-[var(--border-subtle)] pt-4">
-          <Button variant="primary">
-            <ThumbsUp size={14} />
-            Approve
-          </Button>
-          <Button variant="secondary">
-            <ThumbsDown size={14} />
-            Reject
-          </Button>
+        <div className="mt-4 space-y-3 border-t border-[var(--border-subtle)] pt-4">
+          <div className="flex items-center gap-2">
+            <Button
+              variant="primary"
+              onClick={() => setActionNotice("Approve")}
+              disabled={actionNotice !== null}
+            >
+              <ThumbsUp size={14} />
+              Approve
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => setActionNotice("Reject")}
+              disabled={actionNotice !== null}
+            >
+              <ThumbsDown size={14} />
+              Reject
+            </Button>
+          </div>
+          {actionNotice && (
+            <div className="flex items-center gap-2 rounded-[8px] bg-[var(--semantic-info-bg)] px-4 py-3">
+              <Info size={16} className="shrink-0 text-[var(--semantic-info-fg)]" />
+              <span className="text-[13px] text-[var(--semantic-info-fg)]">
+                {actionNotice} action is not yet connected to the backend. This feature is coming
+                soon.
+              </span>
+            </div>
+          )}
         </div>
       )}
     </div>

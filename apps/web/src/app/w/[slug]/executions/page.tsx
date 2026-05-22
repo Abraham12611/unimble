@@ -13,21 +13,13 @@ import { useState } from "react";
 import Link from "next/link";
 import { useWorkspaceContext } from "@/lib/workspace-context";
 import { formatRelativeTime, formatDuration } from "@/lib/format";
-import {
-  Play,
-  MagnifyingGlass,
-  Lightning,
-  CheckCircle,
-  XCircle,
-  Funnel,
-} from "@phosphor-icons/react";
+import { Play, MagnifyingGlass, Lightning, XCircle, Funnel } from "@phosphor-icons/react";
 import { Badge } from "@/components/ui";
+import { type ExecutionStatus, STATUS_CONFIG } from "@/lib/executions";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
-type ExecutionStatus = "running" | "completed" | "failed" | "cancelled";
 
 interface ExecutionRow {
   id: string;
@@ -39,24 +31,6 @@ interface ExecutionRow {
   status: ExecutionStatus;
   costUsd: number;
 }
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-const STATUS_CONFIG: Record<
-  ExecutionStatus,
-  {
-    badge: "info" | "positive" | "negative" | "neutral" | "warning";
-    icon: typeof CheckCircle;
-    label: string;
-  }
-> = {
-  running: { badge: "info", icon: Lightning, label: "Running" },
-  completed: { badge: "positive", icon: CheckCircle, label: "Completed" },
-  failed: { badge: "negative", icon: XCircle, label: "Failed" },
-  cancelled: { badge: "neutral", icon: XCircle, label: "Cancelled" },
-};
 
 // ---------------------------------------------------------------------------
 // Mock Data
