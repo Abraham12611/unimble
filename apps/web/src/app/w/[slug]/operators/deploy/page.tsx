@@ -1,9 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Robot, Check, ArrowRight, ArrowLeft, Clock, Lightning } from "@phosphor-icons/react";
+import { Robot, Check, ArrowRight, ArrowLeft, Clock, Lightning, Info } from "@phosphor-icons/react";
 import { Button, Card, Input, Badge } from "@/components/ui";
 import { PageHeader } from "@/components/layout";
 import { useWorkspaceContext } from "@/lib/workspace-context";
@@ -44,9 +43,7 @@ const templates = [
 const steps = ["Choose Template", "Configure", "Schedule", "Review & Deploy"];
 
 export default function OperatorDeployPage() {
-  const router = useRouter();
-  const { workspace } = useWorkspaceContext();
-  const slug = workspace?.slug ?? "";
+  const { workspace, slug, isLoading } = useWorkspaceContext();
 
   const [currentStep, setCurrentStep] = useState(0);
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
@@ -56,6 +53,7 @@ export default function OperatorDeployPage() {
   const [scheduleEnabled, setScheduleEnabled] = useState(false);
   const [frequency, setFrequency] = useState("daily");
   const [timezone, setTimezone] = useState("UTC");
+  const [deployNotice, setDeployNotice] = useState(false);
 
   const selectedTemplateData = templates.find((t) => t.id === selectedTemplate);
 
@@ -81,7 +79,8 @@ export default function OperatorDeployPage() {
   }
 
   function handleDeploy() {
-    router.push(`/w/${slug}/operators`);
+    // TODO: Wire to Convex mutation when backend deployment API is ready
+    setDeployNotice(true);
   }
 
   const canProceed = () => {
@@ -99,70 +98,51 @@ export default function OperatorDeployPage() {
     }
   };
 
+  // Guard: show loading state until workspace context resolves
+  if (isLoading || !workspace || !slug) {
+    return (
+      <div className="flex items-center justify-center py-24">
+        <div className="text-[13px] text-[var(--text-muted)]">Loading workspace…</div>
+      </div>
+    );
+  }
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+    <div className="flex flex-col gap-6">
       <PageHeader
         title="Deploy Operator"
         description="Set up and deploy a new operator for your workspace."
       />
 
       {/* Step Indicator */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: "0px",
-          padding: "16px 0",
-        }}
-      >
+      <div className="flex items-center justify-center py-4">
         {steps.map((step, index) => (
-          <div key={step} style={{ display: "flex", alignItems: "center" }}>
-            <div
-              style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "6px" }}
-            >
+          <div key={step} className="flex items-center">
+            <div className="flex flex-col items-center gap-1.5">
               <div
-                style={{
-                  width: "32px",
-                  height: "32px",
-                  borderRadius: "50%",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: "13px",
-                  fontWeight: 600,
-                  background:
-                    index < currentStep
-                      ? "var(--chart-primary)"
-                      : index === currentStep
-                        ? "var(--chart-primary)"
-                        : "var(--bg-input)",
-                  color: index <= currentStep ? "#fff" : "var(--text-muted)",
-                  border: index <= currentStep ? "none" : "1px solid var(--border-default)",
-                }}
+                className={`flex h-8 w-8 items-center justify-center rounded-full text-[13px] font-semibold ${
+                  index <= currentStep
+                    ? "bg-[var(--chart-primary)] text-white"
+                    : "border border-[var(--border-default)] bg-[var(--bg-input)] text-[var(--text-muted)]"
+                }`}
               >
                 {index < currentStep ? <Check size={14} weight="bold" /> : index + 1}
               </div>
               <span
-                style={{
-                  fontSize: "12px",
-                  color: index === currentStep ? "var(--text-primary)" : "var(--text-muted)",
-                  fontWeight: index === currentStep ? 500 : 400,
-                  whiteSpace: "nowrap",
-                }}
+                className={`whitespace-nowrap text-[12px] ${
+                  index === currentStep
+                    ? "font-medium text-[var(--text-primary)]"
+                    : "text-[var(--text-muted)]"
+                }`}
               >
                 {step}
               </span>
             </div>
             {index < steps.length - 1 && (
               <div
-                style={{
-                  width: "48px",
-                  height: "2px",
-                  background: index < currentStep ? "var(--chart-primary)" : "var(--border-subtle)",
-                  margin: "0 8px",
-                  marginBottom: "22px",
-                }}
+                className={`mx-2 mb-[22px] h-0.5 w-12 ${
+                  index < currentStep ? "bg-[var(--chart-primary)]" : "bg-[var(--border-subtle)]"
+                }`}
               />
             )}
           </div>
@@ -170,57 +150,28 @@ export default function OperatorDeployPage() {
       </div>
 
       {/* Step Content */}
-      <div style={{ minHeight: "360px" }}>
+      <div className="min-h-[360px]">
         {/* Step 1: Choose Template */}
         {currentStep === 0 && (
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
-              gap: "12px",
-            }}
-          >
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3">
             {templates.map((template) => (
               <div
                 key={template.id}
                 onClick={() => handleTemplateSelect(template.id)}
-                style={{
-                  background: "var(--bg-card)",
-                  border:
-                    selectedTemplate === template.id
-                      ? "2px solid var(--chart-primary)"
-                      : "1px solid var(--border-subtle)",
-                  borderRadius: "14px",
-                  padding: "20px",
-                  cursor: "pointer",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "10px",
-                  transition: "border-color 0.15s ease",
-                }}
+                className={`flex cursor-pointer flex-col gap-2.5 rounded-[14px] bg-[var(--bg-card)] p-5 transition-colors ${
+                  selectedTemplate === template.id
+                    ? "border-2 border-[var(--chart-primary)]"
+                    : "border border-[var(--border-subtle)]"
+                }`}
               >
-                <div
-                  style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}
-                >
-                  <Robot size={24} weight="duotone" style={{ color: "var(--chart-primary)" }} />
+                <div className="flex items-center justify-between">
+                  <Robot size={24} weight="duotone" className="text-[var(--chart-primary)]" />
                   {template.popular && <Badge>Popular</Badge>}
                 </div>
-                <span
-                  style={{
-                    fontSize: "15px",
-                    fontWeight: 600,
-                    color: "var(--text-primary)",
-                  }}
-                >
+                <span className="text-[15px] font-semibold text-[var(--text-primary)]">
                   {template.name}
                 </span>
-                <span
-                  style={{
-                    fontSize: "13px",
-                    color: "var(--text-secondary)",
-                    lineHeight: "1.4",
-                  }}
-                >
+                <span className="text-[13px] leading-relaxed text-[var(--text-secondary)]">
                   {template.description}
                 </span>
               </div>
@@ -230,46 +181,20 @@ export default function OperatorDeployPage() {
 
         {/* Step 2: Configure */}
         {currentStep === 1 && (
-          <Card
-            style={{
-              background: "var(--bg-card)",
-              border: "1px solid var(--border-subtle)",
-              borderRadius: "14px",
-              padding: "24px",
-              display: "flex",
-              flexDirection: "column",
-              gap: "20px",
-            }}
-          >
-            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-              <label
-                style={{
-                  fontSize: "12px",
-                  fontWeight: 500,
-                  color: "var(--text-secondary)",
-                }}
-              >
+          <Card className="flex flex-col gap-5 rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-card)] p-6">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[12px] font-medium text-[var(--text-secondary)]">
                 Operator Name
               </label>
               <Input
                 value={operatorName}
                 onChange={(e) => setOperatorName(e.target.value)}
                 placeholder="Enter operator name"
-                style={{
-                  background: "var(--bg-input)",
-                  border: "1px solid var(--border-default)",
-                  fontSize: "13px",
-                }}
+                className="border-[var(--border-default)] bg-[var(--bg-input)] text-[13px]"
               />
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-              <label
-                style={{
-                  fontSize: "12px",
-                  fontWeight: 500,
-                  color: "var(--text-secondary)",
-                }}
-              >
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[12px] font-medium text-[var(--text-secondary)]">
                 Description
               </label>
               <textarea
@@ -277,46 +202,19 @@ export default function OperatorDeployPage() {
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="What does this operator do?"
                 rows={3}
-                style={{
-                  background: "var(--bg-input)",
-                  border: "1px solid var(--border-default)",
-                  borderRadius: "8px",
-                  padding: "10px 12px",
-                  fontSize: "13px",
-                  color: "var(--text-primary)",
-                  resize: "vertical",
-                  outline: "none",
-                  fontFamily: "inherit",
-                }}
+                className="resize-y rounded-[8px] border border-[var(--border-default)] bg-[var(--bg-input)] px-3 py-2.5 font-[inherit] text-[13px] text-[var(--text-primary)] outline-none focus:border-[var(--border-focus)]"
               />
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-              <label
-                style={{
-                  fontSize: "12px",
-                  fontWeight: 500,
-                  color: "var(--text-secondary)",
-                }}
-              >
-                Persona{" "}
-                <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>(optional)</span>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[12px] font-medium text-[var(--text-secondary)]">
+                Persona <span className="font-normal text-[var(--text-muted)]">(optional)</span>
               </label>
               <textarea
                 value={persona}
                 onChange={(e) => setPersona(e.target.value)}
                 placeholder="Describe a custom AI personality for this operator..."
                 rows={3}
-                style={{
-                  background: "var(--bg-input)",
-                  border: "1px solid var(--border-default)",
-                  borderRadius: "8px",
-                  padding: "10px 12px",
-                  fontSize: "13px",
-                  color: "var(--text-primary)",
-                  resize: "vertical",
-                  outline: "none",
-                  fontFamily: "inherit",
-                }}
+                className="resize-y rounded-[8px] border border-[var(--border-default)] bg-[var(--bg-input)] px-3 py-2.5 font-[inherit] text-[13px] text-[var(--text-primary)] outline-none focus:border-[var(--border-focus)]"
               />
             </div>
           </Card>
@@ -324,106 +222,52 @@ export default function OperatorDeployPage() {
 
         {/* Step 3: Schedule */}
         {currentStep === 2 && (
-          <Card
-            style={{
-              background: "var(--bg-card)",
-              border: "1px solid var(--border-subtle)",
-              borderRadius: "14px",
-              padding: "24px",
-              display: "flex",
-              flexDirection: "column",
-              gap: "20px",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <Clock size={20} style={{ color: "var(--text-secondary)" }} />
-                <span style={{ fontSize: "15px", fontWeight: 600, color: "var(--text-primary)" }}>
+          <Card className="flex flex-col gap-5 rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-card)] p-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <Clock size={20} className="text-[var(--text-secondary)]" />
+                <span className="text-[15px] font-semibold text-[var(--text-primary)]">
                   Enable scheduled runs
                 </span>
               </div>
               <button
                 onClick={() => setScheduleEnabled(!scheduleEnabled)}
-                style={{
-                  width: "40px",
-                  height: "22px",
-                  borderRadius: "11px",
-                  border: "none",
-                  cursor: "pointer",
-                  background: scheduleEnabled ? "var(--chart-primary)" : "var(--border-default)",
-                  position: "relative",
-                  transition: "background 0.2s ease",
-                }}
+                className={`relative h-[22px] w-10 cursor-pointer rounded-full border-none transition-colors duration-200 ${
+                  scheduleEnabled ? "bg-[var(--chart-primary)]" : "bg-[var(--border-default)]"
+                }`}
               >
                 <div
-                  style={{
-                    width: "16px",
-                    height: "16px",
-                    borderRadius: "50%",
-                    background: "#fff",
-                    position: "absolute",
-                    top: "3px",
-                    left: scheduleEnabled ? "21px" : "3px",
-                    transition: "left 0.2s ease",
-                  }}
+                  className={`absolute top-[3px] h-4 w-4 rounded-full bg-white transition-[left] duration-200 ${
+                    scheduleEnabled ? "left-[21px]" : "left-[3px]"
+                  }`}
                 />
               </button>
             </div>
 
             {scheduleEnabled ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                  <label
-                    style={{
-                      fontSize: "12px",
-                      fontWeight: 500,
-                      color: "var(--text-secondary)",
-                    }}
-                  >
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[12px] font-medium text-[var(--text-secondary)]">
                     Frequency
                   </label>
                   <select
                     value={frequency}
                     onChange={(e) => setFrequency(e.target.value)}
-                    style={{
-                      background: "var(--bg-input)",
-                      border: "1px solid var(--border-default)",
-                      borderRadius: "8px",
-                      padding: "10px 12px",
-                      fontSize: "13px",
-                      color: "var(--text-primary)",
-                      outline: "none",
-                      cursor: "pointer",
-                    }}
+                    className="cursor-pointer rounded-[8px] border border-[var(--border-default)] bg-[var(--bg-input)] px-3 py-2.5 text-[13px] text-[var(--text-primary)] outline-none focus:border-[var(--border-focus)]"
                   >
                     <option value="hourly">Hourly</option>
                     <option value="daily">Daily</option>
                     <option value="weekly">Weekly</option>
                   </select>
                 </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                  <label
-                    style={{
-                      fontSize: "12px",
-                      fontWeight: 500,
-                      color: "var(--text-secondary)",
-                    }}
-                  >
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[12px] font-medium text-[var(--text-secondary)]">
                     Timezone
                   </label>
                   <select
                     value={timezone}
                     onChange={(e) => setTimezone(e.target.value)}
-                    style={{
-                      background: "var(--bg-input)",
-                      border: "1px solid var(--border-default)",
-                      borderRadius: "8px",
-                      padding: "10px 12px",
-                      fontSize: "13px",
-                      color: "var(--text-primary)",
-                      outline: "none",
-                      cursor: "pointer",
-                    }}
+                    className="cursor-pointer rounded-[8px] border border-[var(--border-default)] bg-[var(--bg-input)] px-3 py-2.5 text-[13px] text-[var(--text-primary)] outline-none focus:border-[var(--border-focus)]"
                   >
                     <option value="UTC">UTC</option>
                     <option value="America/New_York">America/New_York</option>
@@ -434,18 +278,9 @@ export default function OperatorDeployPage() {
                 </div>
               </div>
             ) : (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  padding: "12px 16px",
-                  background: "var(--bg-input)",
-                  borderRadius: "8px",
-                }}
-              >
-                <Lightning size={16} style={{ color: "var(--text-muted)" }} />
-                <span style={{ fontSize: "13px", color: "var(--text-muted)" }}>
+              <div className="flex items-center gap-2 rounded-[8px] bg-[var(--bg-input)] px-4 py-3">
+                <Lightning size={16} className="text-[var(--text-muted)]" />
+                <span className="text-[13px] text-[var(--text-muted)]">
                   Operator will only run when triggered manually.
                 </span>
               </div>
@@ -455,98 +290,75 @@ export default function OperatorDeployPage() {
 
         {/* Step 4: Review & Deploy */}
         {currentStep === 3 && (
-          <Card
-            style={{
-              background: "var(--bg-card)",
-              border: "1px solid var(--border-subtle)",
-              borderRadius: "14px",
-              padding: "24px",
-              display: "flex",
-              flexDirection: "column",
-              gap: "16px",
-            }}
-          >
-            <h3
-              style={{ fontSize: "18px", fontWeight: 600, color: "var(--text-primary)", margin: 0 }}
-            >
+          <Card className="flex flex-col gap-4 rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-card)] p-6">
+            <h3 className="m-0 text-[18px] font-semibold text-[var(--text-primary)]">
               Review your operator
             </h3>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                <span style={{ fontSize: "12px", color: "var(--text-muted)", fontWeight: 500 }}>
-                  Template
-                </span>
-                <span style={{ fontSize: "13px", color: "var(--text-primary)" }}>
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-1">
+                <span className="text-[12px] font-medium text-[var(--text-muted)]">Template</span>
+                <span className="text-[13px] text-[var(--text-primary)]">
                   {selectedTemplateData?.name ?? "—"}
                 </span>
               </div>
 
-              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                <span style={{ fontSize: "12px", color: "var(--text-muted)", fontWeight: 500 }}>
-                  Name
-                </span>
-                <span style={{ fontSize: "13px", color: "var(--text-primary)" }}>
+              <div className="flex flex-col gap-1">
+                <span className="text-[12px] font-medium text-[var(--text-muted)]">Name</span>
+                <span className="text-[13px] text-[var(--text-primary)]">
                   {operatorName || "—"}
                 </span>
               </div>
 
-              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                <span style={{ fontSize: "12px", color: "var(--text-muted)", fontWeight: 500 }}>
+              <div className="flex flex-col gap-1">
+                <span className="text-[12px] font-medium text-[var(--text-muted)]">
                   Description
                 </span>
-                <span style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
+                <span className="text-[13px] text-[var(--text-secondary)]">
                   {description || "—"}
                 </span>
               </div>
 
               {persona && (
-                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                  <span style={{ fontSize: "12px", color: "var(--text-muted)", fontWeight: 500 }}>
-                    Persona
-                  </span>
-                  <span style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
-                    {persona}
-                  </span>
+                <div className="flex flex-col gap-1">
+                  <span className="text-[12px] font-medium text-[var(--text-muted)]">Persona</span>
+                  <span className="text-[13px] text-[var(--text-secondary)]">{persona}</span>
                 </div>
               )}
 
-              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                <span style={{ fontSize: "12px", color: "var(--text-muted)", fontWeight: 500 }}>
-                  Schedule
-                </span>
-                <span style={{ fontSize: "13px", color: "var(--text-primary)" }}>
+              <div className="flex flex-col gap-1">
+                <span className="text-[12px] font-medium text-[var(--text-muted)]">Schedule</span>
+                <span className="text-[13px] text-[var(--text-primary)]">
                   {scheduleEnabled
                     ? `${frequency.charAt(0).toUpperCase() + frequency.slice(1)} — ${timezone}`
                     : "Manual trigger only"}
                 </span>
               </div>
             </div>
+
+            {/* Coming-soon notice (shown after clicking Deploy) */}
+            {deployNotice && (
+              <div className="mt-2 flex items-center gap-2 rounded-[8px] bg-[var(--semantic-info-bg)] px-4 py-3">
+                <Info size={16} className="shrink-0 text-[var(--semantic-info-fg)]" />
+                <span className="text-[13px] text-[var(--semantic-info-fg)]">
+                  Deployment is not yet connected to the backend. This feature is coming soon.
+                </span>
+              </div>
+            )}
           </Card>
         )}
       </div>
 
       {/* Navigation */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          paddingTop: "8px",
-        }}
-      >
+      <div className="flex items-center justify-between pt-2">
         <Link
           href={`/w/${slug}/operators`}
-          style={{
-            fontSize: "13px",
-            color: "var(--text-muted)",
-            textDecoration: "none",
-          }}
+          className="text-[13px] text-[var(--text-muted)] no-underline hover:text-[var(--text-secondary)]"
         >
           Cancel
         </Link>
 
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        <div className="flex items-center gap-2">
           {currentStep > 0 && (
             <Button onClick={handleBack} variant="secondary">
               <ArrowLeft size={14} />
@@ -559,7 +371,9 @@ export default function OperatorDeployPage() {
               <ArrowRight size={14} />
             </Button>
           ) : (
-            <Button onClick={handleDeploy}>Deploy Operator</Button>
+            <Button onClick={handleDeploy} disabled={deployNotice}>
+              Deploy Operator
+            </Button>
           )}
         </div>
       </div>

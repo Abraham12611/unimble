@@ -398,7 +398,7 @@ function MemoryTab() {
                 <span className="font-mono text-[13px] font-medium text-[var(--text-primary)]">
                   {mem.key}
                 </span>
-                <span className="rounded-[6px] bg-[rgba(160,160,160,0.08)] px-2 py-0.5 text-[11px] font-medium text-[#A0A0A0]">
+                <span className="rounded-[6px] bg-[var(--semantic-neutral-bg)] px-2 py-0.5 text-[11px] font-medium text-[var(--semantic-neutral-fg)]">
                   {mem.source}
                 </span>
               </div>
@@ -467,7 +467,11 @@ function StatusBadge({ status }: { status: string }) {
       text: "text-[var(--semantic-info-fg)]",
       icon: Lightning,
     },
-    cancelled: { bg: "bg-[rgba(160,160,160,0.08)]", text: "text-[#A0A0A0]", icon: XCircle },
+    cancelled: {
+      bg: "bg-[var(--semantic-neutral-bg)]",
+      text: "text-[var(--semantic-neutral-fg)]",
+      icon: XCircle,
+    },
   };
 
   const style = styles[status] ?? styles.cancelled;
