@@ -322,7 +322,11 @@ export default function ExecutionDetailPage() {
           </div>
           <div className="flex items-center gap-1.5 text-[12px] text-[var(--text-secondary)]">
             <Lightning size={14} className="text-[var(--text-muted)]" />
-            <span>{formatDuration(execution.durationMs)}</span>
+            <span>
+              {execution.status === "running"
+                ? "In progress…"
+                : formatDuration(execution.durationMs)}
+            </span>
           </div>
           <div className="flex items-center gap-1.5 text-[12px] text-[var(--text-secondary)]">
             <CurrencyDollar size={14} className="text-[var(--text-muted)]" />
