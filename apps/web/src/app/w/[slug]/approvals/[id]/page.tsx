@@ -19,23 +19,21 @@ import {
   ArrowLeft,
   ThumbsUp,
   ThumbsDown,
-  Clock,
   CheckCircle,
-  XCircle,
   Robot,
   GitBranch,
   Warning,
   Info,
   ArrowRight,
   ChatDots,
+  Clock,
 } from "@phosphor-icons/react";
 import { Badge, Button } from "@/components/ui";
+import { type ApprovalStatus, APPROVAL_STATUS_CONFIG, ExpiresCountdown } from "@/lib/approvals";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
-type ApprovalStatus = "pending" | "approved" | "rejected" | "expired";
 
 interface ApprovalDetail {
   id: string;
@@ -65,20 +63,6 @@ interface AuditEntry {
   actor: string;
   timestamp: number;
 }
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-const STATUS_CONFIG: Record<
-  ApprovalStatus,
-  { badge: "warning" | "positive" | "negative" | "neutral"; icon: typeof Clock; label: string }
-> = {
-  pending: { badge: "warning", icon: Clock, label: "Pending" },
-  approved: { badge: "positive", icon: CheckCircle, label: "Approved" },
-  rejected: { badge: "negative", icon: XCircle, label: "Rejected" },
-  expired: { badge: "neutral", icon: Clock, label: "Expired" },
-};
 
 // ---------------------------------------------------------------------------
 // Mock Data
@@ -226,7 +210,8 @@ export default function ApprovalDetailPage() {
   const approval = MOCK_APPROVAL_MAP[approvalId] ?? null;
 
   function handleAction(action: "approve" | "reject") {
-    // TODO: Wire to Convex mutation
+    // TODO: Wire to Convex mutation — pass `feedback` value
+    void feedback; // Will be sent to mutation when wired
     setActionNotice(action === "approve" ? "Approve" : "Reject");
   }
 
@@ -263,7 +248,7 @@ export default function ApprovalDetailPage() {
     );
   }
 
-  const cfg = STATUS_CONFIG[approval.status];
+  const cfg = APPROVAL_STATUS_CONFIG[approval.status];
   const StatusIcon = cfg.icon;
   const isPending = approval.status === "pending";
 
@@ -312,7 +297,9 @@ export default function ApprovalDetailPage() {
           <Clock size={14} className="text-[var(--text-muted)]" />
           <span>Requested {formatRelativeTime(approval.requestedAt)}</span>
         </div>
-        {isPending && approval.expiresAt && <ExpiresCountdown expiresAt={approval.expiresAt} />}
+        {isPending && approval.expiresAt && (
+          <ExpiresCountdown expiresAt={approval.expiresAt} size="md" />
+        )}
         {approval.respondedAt && (
           <div className="flex items-center gap-1.5 text-[12px] text-[var(--text-secondary)]">
             <CheckCircle size={14} className="text-[var(--text-muted)]" />
@@ -480,39 +467,5 @@ export default function ApprovalDetailPage() {
         </div>
       </div>
     </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Expires Countdown
-// ---------------------------------------------------------------------------
-
-function ExpiresCountdown({ expiresAt }: { expiresAt: number }) {
-  const now = Date.now();
-  const remaining = expiresAt - now;
-
-  if (remaining <= 0) {
-    return (
-      <span className="flex items-center gap-1 text-[12px] text-[var(--semantic-negative-fg)]">
-        <Warning size={14} />
-        Expired
-      </span>
-    );
-  }
-
-  const hours = Math.floor(remaining / (1000 * 60 * 60));
-  const minutes = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60));
-  const isUrgent = hours < 4;
-
-  return (
-    <span
-      className={`flex items-center gap-1 text-[12px] ${
-        isUrgent ? "text-[var(--semantic-warning-fg)]" : "text-[var(--text-muted)]"
-      }`}
-    >
-      <Clock size={14} />
-      Expires in {hours > 0 ? `${hours}h ` : ""}
-      {minutes}m
-    </span>
   );
 }

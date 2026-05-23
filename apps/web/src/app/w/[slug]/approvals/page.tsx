@@ -10,7 +10,8 @@
  * Phase 9.6.1 — Approvals Dashboard
  */
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import Link from "next/link";
 import { useWorkspaceContext } from "@/lib/workspace-context";
 import { formatRelativeTime } from "@/lib/format";
 import {
@@ -19,21 +20,17 @@ import {
   Clock,
   MagnifyingGlass,
   Funnel,
-  CheckCircle,
-  XCircle,
   Eye,
   Robot,
-  Warning,
   Info,
 } from "@phosphor-icons/react";
 import { Badge, Button } from "@/components/ui";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui";
+import { type ApprovalStatus, APPROVAL_STATUS_CONFIG, ExpiresCountdown } from "@/lib/approvals";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
-type ApprovalStatus = "pending" | "approved" | "rejected" | "expired";
 
 interface ApprovalItem {
   id: string;
@@ -49,20 +46,6 @@ interface ApprovalItem {
   respondedBy: string | null;
   feedback: string | null;
 }
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-const STATUS_CONFIG: Record<
-  ApprovalStatus,
-  { badge: "warning" | "positive" | "negative" | "neutral"; icon: typeof Clock; label: string }
-> = {
-  pending: { badge: "warning", icon: Clock, label: "Pending" },
-  approved: { badge: "positive", icon: CheckCircle, label: "Approved" },
-  rejected: { badge: "negative", icon: XCircle, label: "Rejected" },
-  expired: { badge: "neutral", icon: Clock, label: "Expired" },
-};
 
 // ---------------------------------------------------------------------------
 // Mock Data
@@ -190,6 +173,11 @@ export default function ApprovalsPage() {
   const [operatorFilter, setOperatorFilter] = useState<string>("all");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkNotice, setBulkNotice] = useState<string | null>(null);
+
+  // Clear selection when filters change so hidden items can't be bulk-actioned
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [searchQuery, operatorFilter]);
 
   // TODO: Replace with real Convex query
   const approvals = MOCK_APPROVALS;
@@ -446,7 +434,7 @@ function ApprovalCard({
   slug: string;
   showResponse?: boolean;
 }) {
-  const cfg = STATUS_CONFIG[approval.status];
+  const cfg = APPROVAL_STATUS_CONFIG[approval.status];
   const StatusIcon = cfg.icon;
   const isPending = approval.status === "pending";
 
@@ -525,53 +513,18 @@ function ApprovalCard({
           {/* Quick actions for pending */}
           {isPending && (
             <div className="flex items-center gap-2 border-t border-[var(--border-subtle)] pt-3">
-              <a
+              <Link
                 href={`/w/${slug}/approvals/${approval.id}`}
                 className="inline-flex items-center gap-1.5 rounded-[6px] border border-[var(--border-default)] bg-[var(--bg-card)] px-3 py-1.5 text-[12px] font-medium text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-card-hover)]"
               >
                 <Eye size={12} />
                 Review
-              </a>
+              </Link>
             </div>
           )}
         </div>
       </div>
     </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Expires Countdown
-// ---------------------------------------------------------------------------
-
-function ExpiresCountdown({ expiresAt }: { expiresAt: number }) {
-  const now = Date.now();
-  const remaining = expiresAt - now;
-
-  if (remaining <= 0) {
-    return (
-      <span className="flex items-center gap-1 text-[var(--semantic-negative-fg)]">
-        <Warning size={11} />
-        Expired
-      </span>
-    );
-  }
-
-  const hours = Math.floor(remaining / (1000 * 60 * 60));
-  const minutes = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60));
-
-  const isUrgent = hours < 4;
-
-  return (
-    <span
-      className={`flex items-center gap-1 ${
-        isUrgent ? "text-[var(--semantic-warning-fg)]" : "text-[var(--text-muted)]"
-      }`}
-    >
-      <Clock size={11} />
-      Expires in {hours > 0 ? `${hours}h ` : ""}
-      {minutes}m
-    </span>
   );
 }
 
