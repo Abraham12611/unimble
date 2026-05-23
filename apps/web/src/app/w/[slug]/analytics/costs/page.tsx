@@ -13,7 +13,7 @@
  * E. Cost Optimization Suggestions
  */
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -215,12 +215,21 @@ export default function CostManagementPage() {
     at100: true,
   });
   const [saved, setSaved] = useState(false);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function handleSave() {
     // TODO: Wire to Convex mutation
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    saveTimerRef.current = setTimeout(() => setSaved(false), 2000);
   }
+
+  useEffect(
+    () => () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    },
+    []
+  );
 
   if (isLoading || !workspace || !slug) {
     return (
@@ -341,7 +350,9 @@ export default function CostManagementPage() {
                   </span>
                   <span className="ml-1 text-[var(--text-secondary)]">
                     {projectedOverBudget
-                      ? `— ${((MOCK_PERIOD.projected / monthlyBudget - 1) * 100).toFixed(0)}% over budget`
+                      ? monthlyBudget > 0
+                        ? `— ${((MOCK_PERIOD.projected / monthlyBudget - 1) * 100).toFixed(0)}% over budget`
+                        : "— over budget"
                       : "— within budget"}
                   </span>
                 </div>

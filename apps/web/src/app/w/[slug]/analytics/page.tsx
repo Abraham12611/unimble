@@ -312,11 +312,19 @@ function StackedAreaChart({ data }: { data: typeof MOCK_COST_CHART }) {
   return (
     <div>
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none" height={120}>
-        {/* Inference area (bottom to top of inference) */}
-        <path d={areaPath(inferenceTotals, zeros)} fill="var(--chart-primary)" fillOpacity={0.25} />
-        {/* Tool calls area */}
-        <path d={areaPath(toolTotals, zeros)} fill="var(--chart-secondary)" fillOpacity={0.25} />
-        {/* Other area */}
+        {/* Inference area — from toolCalls+other baseline up to full total */}
+        <path
+          d={areaPath(inferenceTotals, toolTotals)}
+          fill="var(--chart-primary)"
+          fillOpacity={0.25}
+        />
+        {/* Tool calls area — from other baseline up to toolCalls+other */}
+        <path
+          d={areaPath(toolTotals, otherTotals)}
+          fill="var(--chart-secondary)"
+          fillOpacity={0.25}
+        />
+        {/* Other area — from zero up to other totals (bottom layer) */}
         <path d={areaPath(otherTotals, zeros)} fill="var(--chart-bar-active)" fillOpacity={0.3} />
         {/* Top line */}
         <polyline
@@ -452,7 +460,8 @@ export default function AnalyticsPage() {
               <select
                 value={dateRange}
                 onChange={(e) => setDateRange(e.target.value as DateRange)}
-                className="appearance-none bg-transparent text-[12px] text-[var(--text-primary)] outline-none pr-4"
+                className="appearance-none bg-transparent text-[12px] text-[var(--text-primary)] outline-none pr-4 cursor-not-allowed opacity-60"
+                title="Date filtering will be available once data is wired to the backend"
               >
                 {(Object.keys(DATE_RANGE_LABELS) as DateRange[]).map((k) => (
                   <option key={k} value={k}>
