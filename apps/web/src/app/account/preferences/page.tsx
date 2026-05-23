@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { FloppyDisk, CheckCircle } from "@phosphor-icons/react";
 import { cn } from "@/lib/cn";
 
@@ -22,11 +22,20 @@ export default function PreferencesPage() {
   const [timeFormat, setTimeFormat] = useState<"12h" | "24h">("12h");
   const [shortcuts, setShortcuts] = useState(true);
   const [saved, setSaved] = useState(false);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    },
+    []
+  );
 
   function handleSave() {
     // TODO: Wire to Convex user prefs mutation
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
+    saveTimerRef.current = setTimeout(() => setSaved(false), 2500);
   }
 
   return (

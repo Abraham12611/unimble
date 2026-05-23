@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   Shield,
   Monitor,
@@ -42,8 +42,33 @@ export default function SecurityPage() {
   const [newPw, setNewPw] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
 
+  const [changingPw, setChangingPw] = useState(false);
+  const [pwChanged, setPwChanged] = useState(false);
+  const pwTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (pwTimerRef.current) clearTimeout(pwTimerRef.current);
+    },
+    []
+  );
+
   const passwordMismatch = confirmPw.length > 0 && newPw !== confirmPw;
   const canSave = currentPw.length > 0 && newPw.length >= 8 && newPw === confirmPw;
+
+  function handleChangePassword() {
+    // TODO: Wire to Clerk password update
+    setChangingPw(true);
+    if (pwTimerRef.current) clearTimeout(pwTimerRef.current);
+    pwTimerRef.current = setTimeout(() => {
+      setChangingPw(false);
+      setPwChanged(true);
+      setCurrentPw("");
+      setNewPw("");
+      setConfirmPw("");
+      pwTimerRef.current = setTimeout(() => setPwChanged(false), 2000);
+    }, 600);
+  }
 
   return (
     <div className="space-y-6">
@@ -107,10 +132,16 @@ export default function SecurityPage() {
           <div className="flex justify-end pt-1">
             <button
               type="button"
-              disabled={!canSave}
-              className="rounded-[6px] border border-[#2A2A2A] bg-[#1C1C1C] px-4 py-2 text-[13px] font-medium text-[#F0F0F0] transition-colors hover:bg-[#222222] disabled:cursor-not-allowed disabled:text-[#555555]"
+              onClick={handleChangePassword}
+              disabled={!canSave || changingPw}
+              className={cn(
+                "rounded-[6px] border px-4 py-2 text-[13px] font-medium transition-colors disabled:cursor-not-allowed",
+                pwChanged
+                  ? "border-[rgba(34,197,94,0.3)] bg-[rgba(34,197,94,0.08)] text-[#22C55E]"
+                  : "border-[#2A2A2A] bg-[#1C1C1C] text-[#F0F0F0] hover:bg-[#222222] disabled:text-[#555555]"
+              )}
             >
-              Change Password
+              {changingPw ? "Changing…" : pwChanged ? "Password updated" : "Change Password"}
             </button>
           </div>
         </div>

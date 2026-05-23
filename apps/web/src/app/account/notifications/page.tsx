@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { EnvelopeSimple, ChatCircle, Bell, FloppyDisk, CheckCircle } from "@phosphor-icons/react";
 import { cn } from "@/lib/cn";
 
@@ -54,6 +54,14 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
 export default function AccountNotificationsPage() {
   const [prefs, setPrefs] = useState<Record<NotifKey, boolean>>(DEFAULT_PREFS);
   const [saved, setSaved] = useState(false);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    },
+    []
+  );
 
   function set(key: NotifKey, value: boolean) {
     setPrefs((p) => ({ ...p, [key]: value }));
@@ -61,8 +69,9 @@ export default function AccountNotificationsPage() {
 
   function handleSave() {
     // TODO: Wire to Convex mutation
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
+    saveTimerRef.current = setTimeout(() => setSaved(false), 2500);
   }
 
   return (

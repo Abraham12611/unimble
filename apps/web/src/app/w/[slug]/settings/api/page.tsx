@@ -94,11 +94,25 @@ function EnvBadge({ env }: { env: "production" | "development" }) {
 // ---------------------------------------------------------------------------
 
 export default function ApiSettingsPage() {
+  const [keys, setKeys] = useState<ApiKey[]>(MOCK_KEYS);
+  const [webhooks, setWebhooks] = useState<Webhook[]>(MOCK_WEBHOOKS);
   const [revealedKeys, setRevealedKeys] = useState<Set<string>>(new Set());
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showWebhookModal, setShowWebhookModal] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [confirmDeleteWebhookId, setConfirmDeleteWebhookId] = useState<string | null>(null);
+
+  function handleDeleteKey(id: string) {
+    // TODO: Wire to Convex mutation
+    setKeys((prev) => prev.filter((k) => k.id !== id));
+    setConfirmDeleteId(null);
+  }
+
+  function handleDeleteWebhook(id: string) {
+    // TODO: Wire to Convex mutation
+    setWebhooks((prev) => prev.filter((w) => w.id !== id));
+    setConfirmDeleteWebhookId(null);
+  }
 
   // Create key form state
   const [newKeyName, setNewKeyName] = useState("");
@@ -160,7 +174,7 @@ export default function ApiSettingsPage() {
         </div>
 
         <div className="divide-y divide-[#1A1A1A]">
-          {MOCK_KEYS.map((key) => {
+          {keys.map((key) => {
             const isRevealed = revealedKeys.has(key.id);
             const isConfirming = confirmDeleteId === key.id;
             return (
@@ -207,7 +221,7 @@ export default function ApiSettingsPage() {
                       <div className="flex items-center gap-1">
                         <button
                           type="button"
-                          onClick={() => setConfirmDeleteId(null)}
+                          onClick={() => handleDeleteKey(key.id)}
                           className="rounded-[6px] bg-[rgba(239,68,68,0.12)] px-2 py-1 text-[11px] font-medium text-[#EF4444] transition-colors hover:bg-[rgba(239,68,68,0.2)]"
                         >
                           Confirm delete
@@ -256,7 +270,7 @@ export default function ApiSettingsPage() {
         </div>
 
         <div className="divide-y divide-[#1A1A1A]">
-          {MOCK_WEBHOOKS.map((wh) => {
+          {webhooks.map((wh) => {
             const isConfirming = confirmDeleteWebhookId === wh.id;
             return (
               <div key={wh.id} className="px-5 py-4">
@@ -293,7 +307,7 @@ export default function ApiSettingsPage() {
                       <div className="flex items-center gap-1">
                         <button
                           type="button"
-                          onClick={() => setConfirmDeleteWebhookId(null)}
+                          onClick={() => handleDeleteWebhook(wh.id)}
                           className="rounded-[6px] bg-[rgba(239,68,68,0.12)] px-2 py-1 text-[11px] font-medium text-[#EF4444] transition-colors hover:bg-[rgba(239,68,68,0.2)]"
                         >
                           Confirm delete
