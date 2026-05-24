@@ -10,7 +10,7 @@
  * Phase 9.6.1 — Approvals Dashboard
  */
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
 import { useWorkspaceContext } from "@/lib/workspace-context";
 import { formatRelativeTime } from "@/lib/format";
@@ -174,11 +174,6 @@ export default function ApprovalsPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkNotice, setBulkNotice] = useState<string | null>(null);
 
-  // Clear selection when filters change so hidden items can't be bulk-actioned
-  useEffect(() => {
-    setSelectedIds(new Set());
-  }, [searchQuery, operatorFilter]);
-
   // TODO: Replace with real Convex query
   const approvals = MOCK_APPROVALS;
 
@@ -288,7 +283,10 @@ export default function ApprovalsPage() {
             type="text"
             placeholder="Search approvals..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setSelectedIds(new Set());
+            }}
             className="w-full rounded-[6px] border border-[var(--border-default)] bg-[var(--bg-input)] py-2 pl-9 pr-3 text-[13px] text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--border-focus)]"
           />
         </div>
@@ -298,7 +296,10 @@ export default function ApprovalsPage() {
           <Funnel size={14} className="text-[var(--text-muted)]" />
           <select
             value={operatorFilter}
-            onChange={(e) => setOperatorFilter(e.target.value)}
+            onChange={(e) => {
+              setOperatorFilter(e.target.value);
+              setSelectedIds(new Set());
+            }}
             className="rounded-[6px] border border-[var(--border-default)] bg-[var(--bg-input)] px-3 py-2 text-[13px] text-[var(--text-primary)] outline-none focus:border-[var(--border-focus)]"
           >
             <option value="all">All Operators</option>
