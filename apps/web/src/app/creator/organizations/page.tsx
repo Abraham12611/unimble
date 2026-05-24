@@ -361,12 +361,6 @@ export default function OrganizationsPage() {
                       </>
                     ) : (
                       <>
-                        <Link
-                          href={`/creator/organizations/${org.id}`}
-                          className="rounded-[6px] border border-[#2A2A2A] bg-[#1C1C1C] px-2.5 py-1.5 text-[11px] text-[#888888] transition-colors hover:text-[#F0F0F0]"
-                        >
-                          View
-                        </Link>
                         {org.status === "blocked" ? (
                           <button
                             type="button"

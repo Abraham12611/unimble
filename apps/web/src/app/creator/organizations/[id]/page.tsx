@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -119,7 +120,7 @@ function OverviewTab({
       {
         id: `n${Date.now()}`,
         text: note.trim(),
-        author: "Abraham",
+        author: "Abraham", // TODO: replace with authenticated user's display name
         date: new Date().toLocaleDateString("en-US", {
           month: "short",
           day: "numeric",
@@ -339,12 +340,24 @@ function UsersTab() {
   );
 }
 
-function UsageTab() {
-  const limits = MOCK_USAGE_LIMITS;
-  const org = MOCK_ORG;
+function UsageTab({ org }: { org: typeof MOCK_ORG }) {
+  const [limits, setLimits] = useState(MOCK_USAGE_LIMITS);
   const [editingLimits, setEditingLimits] = useState(false);
-  const [operatorsMax, setOperatorsMax] = useState(String(limits.operatorsMax));
-  const [execPerDay, setExecPerDay] = useState(String(limits.executionsPerDay));
+  const [operatorsMax, setOperatorsMax] = useState(String(MOCK_USAGE_LIMITS.operatorsMax));
+  const [execPerDay, setExecPerDay] = useState(String(MOCK_USAGE_LIMITS.executionsPerDay));
+
+  function handleSaveOverrides() {
+    // TODO: persist to Convex platform-admin mutation
+    const parsedOps = parseInt(operatorsMax, 10);
+    const parsedExec = parseInt(execPerDay, 10);
+    if (!isNaN(parsedOps) && parsedOps > 0) {
+      setLimits((prev) => ({ ...prev, operatorsMax: parsedOps }));
+    }
+    if (!isNaN(parsedExec) && parsedExec > 0) {
+      setLimits((prev) => ({ ...prev, executionsPerDay: parsedExec }));
+    }
+    setEditingLimits(false);
+  }
 
   const usageRows = [
     { label: "Operators", used: org.operatorsActive, max: limits.operatorsMax, unit: "" },
@@ -419,7 +432,7 @@ function UsageTab() {
             </div>
             <button
               type="button"
-              onClick={() => setEditingLimits(false)}
+              onClick={handleSaveOverrides}
               className="rounded-[6px] bg-[rgba(34,197,94,0.1)] px-3 py-1.5 text-[11px] font-medium text-[#22C55E] transition-colors hover:bg-[rgba(34,197,94,0.18)]"
             >
               Save Overrides
@@ -571,7 +584,9 @@ function SettingsTab({ onDelete }: { onDelete: () => void }) {
 // Main page
 // ---------------------------------------------------------------------------
 
-export default function OrgDetailPage() {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export default function OrgDetailPage({ params }: { params: { id: string } }) {
+  // TODO: use params.id to fetch org from Convex: useQuery(api.orgs.getById, { id: params.id })
   const [activeTab, setActiveTab] = useState<Tab>("overview");
   const [org, setOrg] = useState(MOCK_ORG);
   const [showBlockConfirm, setShowBlockConfirm] = useState(false);
@@ -597,9 +612,11 @@ export default function OrgDetailPage() {
     }));
   }
 
+  const router = useRouter();
+
   function handleDelete() {
     // TODO: Wire to Convex platform-admin mutation
-    window.location.href = "/creator/organizations";
+    router.push("/creator/organizations");
   }
 
   return (
@@ -694,7 +711,7 @@ export default function OrgDetailPage() {
         />
       )}
       {activeTab === "users" && <UsersTab />}
-      {activeTab === "usage" && <UsageTab />}
+      {activeTab === "usage" && <UsageTab org={org} />}
       {activeTab === "billing" && <BillingTab />}
       {activeTab === "activity" && <ActivityTab />}
       {activeTab === "settings" && <SettingsTab onDelete={handleDelete} />}
