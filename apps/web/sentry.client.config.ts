@@ -8,8 +8,8 @@ Sentry.init({
 
   debug: false,
 
-  // Always capture replays on errors; sample sessions in production only
-  replaysOnErrorSampleRate: 1.0,
+  // In dev: disable replays entirely (beforeSend already drops error events)
+  replaysOnErrorSampleRate: process.env.NODE_ENV === "production" ? 1.0 : 0,
   replaysSessionSampleRate: process.env.NODE_ENV === "production" ? 0.05 : 0,
 
   environment: process.env.NODE_ENV,
