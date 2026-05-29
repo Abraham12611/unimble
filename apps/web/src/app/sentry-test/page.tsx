@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { SentryTestButtons } from "./SentryTestButtons";
 
 export default function SentryTestPage() {
-  if (process.env.NODE_ENV !== "development") {
+  if (process.env.NODE_ENV !== "development" && process.env.SENTRY_TEST_ENABLED !== "1") {
     notFound();
   }
 
