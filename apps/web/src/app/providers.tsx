@@ -6,7 +6,7 @@ import { useAuth, useUser } from "@clerk/nextjs";
 import { ConvexReactClient } from "convex/react";
 import { ConvexProviderWithClerk } from "convex/react-clerk";
 import { usePathname, useSearchParams } from "next/navigation";
-import { initPostHog, posthog } from "@/lib/posthog";
+import { posthog } from "@/lib/posthog";
 
 const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
 if (!convexUrl) {
@@ -20,10 +20,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   const searchParams = useSearchParams();
   const { user } = useUser();
 
-  useEffect(() => {
-    initPostHog();
-  }, []);
-
+  // Page view tracking
   useEffect(() => {
     if (pathname && posthog) {
       let url = window.origin + pathname;
@@ -33,6 +30,20 @@ export function Providers({ children }: { children: React.ReactNode }) {
       posthog.capture("$pageview", { $current_url: url });
     }
   }, [pathname, searchParams]);
+
+  // Identify user with PostHog after Clerk auth
+  useEffect(() => {
+    if (user) {
+      posthog.identify(user.id, {
+        email: user.primaryEmailAddress?.emailAddress,
+        name: user.fullName ?? undefined,
+        username: user.username ?? undefined,
+        createdAt: user.createdAt?.toISOString(),
+      });
+    } else {
+      posthog.reset();
+    }
+  }, [user]);
 
   // Set Sentry user context so error reports include user identity
   useEffect(() => {
