@@ -7,4 +7,9 @@ posthog.init(process.env.NEXT_PUBLIC_POSTHOG_KEY!, {
   person_profiles: "identified_only",
   capture_pageview: false,
   capture_pageleave: true,
+  loaded: (ph) => {
+    if (process.env.NODE_ENV === "development") {
+      ph.opt_out_capturing();
+    }
+  },
 });

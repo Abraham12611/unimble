@@ -18,7 +18,7 @@ const convex = new ConvexReactClient(convexUrl);
 export function Providers({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { user } = useUser();
+  const { user, isLoaded } = useUser();
 
   // Page view tracking
   useEffect(() => {
@@ -33,17 +33,17 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   // Identify user with PostHog after Clerk auth
   useEffect(() => {
-    if (user) {
+    if (isLoaded && user) {
       posthog.identify(user.id, {
         email: user.primaryEmailAddress?.emailAddress,
         name: user.fullName ?? undefined,
         username: user.username ?? undefined,
         createdAt: user.createdAt?.toISOString(),
       });
-    } else {
+    } else if (isLoaded && !user) {
       posthog.reset();
     }
-  }, [user]);
+  }, [user, isLoaded]);
 
   // Set Sentry user context so error reports include user identity
   useEffect(() => {
