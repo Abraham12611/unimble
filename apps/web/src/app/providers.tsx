@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect } from "react";
-import { useAuth } from "@clerk/nextjs";
+import * as Sentry from "@sentry/nextjs";
+import { useAuth, useUser } from "@clerk/nextjs";
 import { ConvexReactClient } from "convex/react";
 import { ConvexProviderWithClerk } from "convex/react-clerk";
 import { usePathname, useSearchParams } from "next/navigation";
@@ -17,6 +18,7 @@ const convex = new ConvexReactClient(convexUrl);
 export function Providers({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { user } = useUser();
 
   useEffect(() => {
     initPostHog();
@@ -31,6 +33,19 @@ export function Providers({ children }: { children: React.ReactNode }) {
       posthog.capture("$pageview", { $current_url: url });
     }
   }, [pathname, searchParams]);
+
+  // Set Sentry user context so error reports include user identity
+  useEffect(() => {
+    if (user) {
+      Sentry.setUser({
+        id: user.id,
+        email: user.primaryEmailAddress?.emailAddress,
+        username: user.username ?? undefined,
+      });
+    } else {
+      Sentry.setUser(null);
+    }
+  }, [user]);
 
   return (
     <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
