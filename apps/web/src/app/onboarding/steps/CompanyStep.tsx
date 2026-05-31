@@ -1,6 +1,5 @@
 "use client";
 
-import { SelectableCard } from "../components";
 import type { OnboardingData, CompanySize } from "../types";
 
 interface CompanyStepProps {
@@ -38,14 +37,18 @@ export function CompanyStep({ data, onChange }: CompanyStepProps) {
         <label className="text-[12px] text-[#666666]">Company size</label>
         <div className="grid grid-cols-5 gap-2">
           {SIZE_OPTIONS.map((size) => (
-            <SelectableCard
+            <button
               key={size.value}
-              selected={data.companySize === size.value}
+              type="button"
               onClick={() => onChange({ ...data, companySize: size.value })}
-              icon={<span />}
-              title={size.label}
-              size="compact"
-            />
+              className={`rounded-[10px] border py-2.5 text-center text-[13px] font-medium transition-colors duration-200 ${
+                data.companySize === size.value
+                  ? "border-[#6366F1] bg-[rgba(99,102,241,0.12)] text-[#F0F0F0]"
+                  : "border-[#222222] bg-[#111111] text-[#888888] hover:bg-[#1C1C1C]"
+              }`}
+            >
+              {size.label}
+            </button>
           ))}
         </div>
       </div>

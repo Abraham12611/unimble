@@ -62,13 +62,6 @@ export function OnboardingClient() {
     [data]
   );
 
-  const maxReachableIndex = (() => {
-    for (let i = 0; i < ONBOARDING_STEPS.length; i += 1) {
-      if (!isStepComplete(ONBOARDING_STEPS[i].key)) return i;
-    }
-    return ONBOARDING_STEPS.length - 1;
-  })();
-
   const canContinue = step ? isStepComplete(step.key) && !saving : true;
 
   const persistAndFinish = async () => {
@@ -115,11 +108,6 @@ export function OnboardingClient() {
   const skipStep = () => {
     if (!step?.optional) return;
     goNext();
-  };
-
-  const handleStepClick = (index: number) => {
-    if (index > maxReachableIndex) return;
-    setUiState(index + 1);
   };
 
   const updateData = (partial: Partial<OnboardingData>) => {
@@ -173,9 +161,6 @@ export function OnboardingClient() {
       isLast={dataStepIndex === ONBOARDING_STEPS.length - 1}
       saving={saving}
       saveError={saveError}
-      steps={ONBOARDING_STEPS}
-      onStepClick={handleStepClick}
-      maxReachableIndex={maxReachableIndex}
     >
       {step.key === "profile" && (
         <ProfileStep
