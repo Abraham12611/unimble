@@ -1,0 +1,9 @@
+export { WelcomeStep } from "./WelcomeStep";
+export { ProfileStep } from "./ProfileStep";
+export { CompanyStep } from "./CompanyStep";
+export { UseCaseStep } from "./UseCaseStep";
+export { IntegrationsStep } from "./IntegrationsStep";
+export { OperatorsStep } from "./OperatorsStep";
+export { WorkspaceStep } from "./WorkspaceStep";
+export { InviteStep } from "./InviteStep";
+export { CompletionStep } from "./CompletionStep";
