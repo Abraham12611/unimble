@@ -15,16 +15,16 @@ export function CompletionStep({ data }: CompletionStepProps) {
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setSecondsLeft((s) => {
-        if (s <= 1) {
-          router.push("/dashboard");
-          return 0;
-        }
-        return s - 1;
-      });
+      setSecondsLeft((s) => (s <= 1 ? 0 : s - 1));
     }, 1000);
     return () => clearInterval(interval);
-  }, [router]);
+  }, []);
+
+  useEffect(() => {
+    if (secondsLeft === 0) {
+      router.push("/dashboard");
+    }
+  }, [secondsLeft, router]);
 
   const connectedCount = data.integrations.filter((i) => i.connected).length;
   const inviteCount = data.inviteEmails

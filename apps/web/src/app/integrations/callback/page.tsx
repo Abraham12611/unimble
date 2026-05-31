@@ -21,7 +21,7 @@ export default function IntegrationCallbackPage() {
           status: rawStatus,
           connectedAccountId,
         },
-        "*"
+        window.location.origin
       );
     }
 

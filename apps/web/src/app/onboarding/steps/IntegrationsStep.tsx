@@ -75,6 +75,7 @@ export function IntegrationsStep({ data, onChange }: IntegrationsStepProps) {
 
   useEffect(() => {
     const handler = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
       if (event.data?.type !== "COMPOSIO_INTEGRATION_COMPLETE") return;
 
       const { status, connectedAccountId } = event.data as {

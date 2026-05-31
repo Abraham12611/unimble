@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Crown, ChartBar, PenNib, Code, X, UserCircle } from "@phosphor-icons/react";
 import { SelectableCard } from "../components";
 import type { OnboardingData } from "../types";
@@ -18,16 +18,43 @@ const ICON_MAP: Record<string, React.ReactNode> = {
   Code: <Code size={24} />,
 };
 
+function isBlobUrl(url: string) {
+  return url.startsWith("blob:");
+}
+
 export function ProfileStep({ data, onChange }: ProfileStepProps) {
-  const [previewUrl, setPreviewUrl] = useState(data.avatarUrl);
+  const [previewUrl, setPreviewUrl] = useState(isBlobUrl(data.avatarUrl) ? "" : data.avatarUrl);
   const [showUrlInput, setShowUrlInput] = useState(false);
+  const blobRef = useRef<string | null>(null);
+
+  const revokeBlob = () => {
+    if (blobRef.current) {
+      URL.revokeObjectURL(blobRef.current);
+      blobRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      revokeBlob();
+    };
+  }, []);
 
   const handleFile = (file: File) => {
     if (!file.type.startsWith("image/")) return;
     if (file.size > 2 * 1024 * 1024) return;
+    revokeBlob();
     const url = URL.createObjectURL(file);
+    blobRef.current = url;
     setPreviewUrl(url);
-    onChange({ ...data, avatarUrl: url });
+    // Do NOT send blob URL to backend — only real https URLs pass validation
+    onChange({ ...data, avatarUrl: "" });
+  };
+
+  const clearAvatar = () => {
+    revokeBlob();
+    setPreviewUrl("");
+    onChange({ ...data, avatarUrl: "" });
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -56,10 +83,7 @@ export function ProfileStep({ data, onChange }: ProfileStepProps) {
               />
               <button
                 type="button"
-                onClick={() => {
-                  setPreviewUrl("");
-                  onChange({ ...data, avatarUrl: "" });
-                }}
+                onClick={clearAvatar}
                 className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-[#222222] text-[#555555] hover:text-[#EF4444]"
               >
                 <X size={10} weight="bold" />
@@ -111,8 +135,10 @@ export function ProfileStep({ data, onChange }: ProfileStepProps) {
             type="url"
             value={data.avatarUrl}
             onChange={(e) => {
-              onChange({ ...data, avatarUrl: e.target.value });
-              setPreviewUrl(e.target.value);
+              const value = e.target.value;
+              revokeBlob();
+              setPreviewUrl(value);
+              onChange({ ...data, avatarUrl: value });
             }}
             placeholder="https://…"
             className="w-full rounded-[10px] border border-[#2A2A2A] bg-[#1A1A1A] px-3 py-2 text-[13px] text-[#F0F0F0] outline-none transition-colors duration-200 focus:border-[#3A3A3A]"

@@ -28,6 +28,7 @@ export function TagInput({
     if (!trimmed) return;
     if (tags.includes(trimmed)) return;
     if (tags.length >= maxTags) return;
+    if (!validator(trimmed)) return;
     onChange([...tags, trimmed]);
   };
 

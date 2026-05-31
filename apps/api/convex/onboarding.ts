@@ -43,8 +43,15 @@ export const completeOnboarding = mutation({
     companySize: convexValidators.stringField,
     useCase: convexValidators.stringField,
     workspaceName: convexValidators.stringField,
-    integrations: v.any(),
-    operatorTemplates: v.any(),
+    integrations: v.array(
+      v.object({
+        service: v.string(),
+        connected: v.boolean(),
+        connectedAccountId: v.optional(v.string()),
+        connecting: v.optional(v.boolean()),
+      })
+    ),
+    operatorTemplates: v.array(v.string()),
     inviteEmails: convexValidators.stringField,
   },
   handler: async (ctx, args) => {
