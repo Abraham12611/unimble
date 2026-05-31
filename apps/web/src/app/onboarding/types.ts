@@ -17,6 +17,8 @@ export type OperatorTemplate =
 export type IntegrationConnection = {
   service: IntegrationService;
   connected: boolean;
+  connectedAccountId?: string;
+  connecting?: boolean;
 };
 
 export type StepKey =

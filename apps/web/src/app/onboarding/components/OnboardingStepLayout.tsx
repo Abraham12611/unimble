@@ -42,7 +42,7 @@ export function OnboardingStepLayout({
       <div className="w-full max-w-[520px] space-y-6">
         {/* Logo */}
         <div className="flex justify-center">
-          <img src="/unimble-logo.svg" alt="Unimble" className="h-7" />
+          <img src="/unimble-logo.svg" alt="Unimble" className="h-10" />
         </div>
 
         {/* Progress */}
