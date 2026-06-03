@@ -1,0 +1,58 @@
+diff --git a/dist/chunk-CWQeghP5.mjs b/dist/chunk-CWQeghP5.mjs
+index 7e55a709f8cd67cf5f2a2825d790feca593b997d..60ace08ff89058738e85cc284715f6a631eac7de 100644
+--- a/dist/chunk-CWQeghP5.mjs
++++ b/dist/chunk-CWQeghP5.mjs
+@@ -1,5 +1,3 @@
+-import "node:module";
+-
+ //#region rolldown:runtime
+ var __defProp = Object.defineProperty;
+ var __exportAll = (all, symbols) => {
+diff --git a/package.json b/package.json
+index 47c04751f22770f682b3f803c71d6d359ab2d7eb..39fe5ec8ce3d493d924b36d707a6ff9e177b2724 100644
+--- a/package.json
++++ b/package.json
+@@ -16,8 +16,8 @@
+         "require": "./dist/platform/node.cjs"
+       },
+       "default": {
+-        "import": "./dist/platform/node.mjs",
+-        "require": "./dist/platform/node.cjs"
++        "import": "./dist/platform/workerd.mjs",
++        "require": "./dist/platform/workerd.mjs"
+       }
+     },
+     "#files": {
+@@ -28,8 +28,8 @@
+         "require": "./dist/models/Files.node.cjs"
+       },
+       "default": {
+-        "import": "./dist/models/Files.node.mjs",
+-        "require": "./dist/models/Files.node.cjs"
++        "import": "./dist/models/Files.workerd.mjs",
++        "require": "./dist/models/Files.workerd.mjs"
+       }
+     },
+     "#file_tool_modifier": {
+@@ -40,8 +40,8 @@
+         "require": "./dist/utils/modifiers/FileToolModifier.node.cjs"
+       },
+       "default": {
+-        "import": "./dist/utils/modifiers/FileToolModifier.node.mjs",
+-        "require": "./dist/utils/modifiers/FileToolModifier.node.cjs"
++        "import": "./dist/utils/modifiers/FileToolModifier.workerd.mjs",
++        "require": "./dist/utils/modifiers/FileToolModifier.workerd.mjs"
+       }
+     },
+     "#config_defaults": {
+@@ -52,8 +52,8 @@
+         "require": "./dist/utils/config-defaults/ConfigDefaults.node.cjs"
+       },
+       "default": {
+-        "import": "./dist/utils/config-defaults/ConfigDefaults.node.mjs",
+-        "require": "./dist/utils/config-defaults/ConfigDefaults.node.cjs"
++        "import": "./dist/utils/config-defaults/ConfigDefaults.workerd.mjs",
++        "require": "./dist/utils/config-defaults/ConfigDefaults.workerd.mjs"
+       }
+     }
+   },

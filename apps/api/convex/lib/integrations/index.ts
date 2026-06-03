@@ -116,14 +116,14 @@ export {
   firehosePollEvents,
 } from "./firehose";
 
-// Credential Encryption
-export {
-  encryptCredential,
-  decryptCredential,
-  isEncrypted,
-  reEncryptCredential,
-  maskCredential,
-} from "./crypto";
+// Credential Encryption - temporarily disabled for onboarding deployment
+// export {
+//   encryptCredential,
+//   decryptCredential,
+//   isEncrypted,
+//   reEncryptCredential,
+//   maskCredential,
+// } from "../../credentialCrypto";
 
 // Token Management
 export type { TokenHealth, TokenRefreshResult, TokenRevocationResult } from "./tokenManager";

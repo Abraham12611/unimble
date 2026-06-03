@@ -18,7 +18,7 @@
 
 import { v } from "convex/values";
 import type { Id } from "../../_generated/dataModel";
-import { internalAction, internalMutation, internalQuery } from "../../_generated/server";
+import { internalAction } from "../../_generated/server";
 import { makeFunctionReference } from "convex/server";
 import type { MemoryEntry, MemoryScope } from "../types";
 
@@ -69,7 +69,7 @@ export interface MemorySearchResult {
  * Creates a new memory entry in the database.
  * Called from actions after generating the embedding.
  */
-export const createMemoryRecord = internalMutation({
+export const createMemoryRecord = internalAction({
   args: {
     workspaceId: v.id("workspaces"),
     operatorId: v.optional(v.id("operators")),
@@ -107,7 +107,7 @@ export const createMemoryRecord = internalMutation({
 /**
  * Updates an existing memory's content and re-embeds.
  */
-export const updateMemoryRecord = internalMutation({
+export const updateMemoryRecord = internalAction({
   args: {
     memoryId: v.id("memories"),
     content: v.optional(v.string()),
@@ -131,7 +131,7 @@ export const updateMemoryRecord = internalMutation({
 /**
  * Records a memory access (increments accessCount, updates lastAccessedAt).
  */
-export const recordMemoryAccess = internalMutation({
+export const recordMemoryAccess = internalAction({
   args: {
     memoryIds: v.array(v.id("memories")),
   },
@@ -153,7 +153,7 @@ export const recordMemoryAccess = internalMutation({
 /**
  * Soft-deletes a memory (sets status to "archived").
  */
-export const archiveMemory = internalMutation({
+export const archiveMemory = internalAction({
   args: { memoryId: v.id("memories") },
   handler: async (ctx, args) => {
     await ctx.db.patch(args.memoryId, {
@@ -170,7 +170,7 @@ export const archiveMemory = internalMutation({
 /**
  * Retrieves memories by their IDs (used after vectorSearch to get full docs).
  */
-export const getMemoriesByIds = internalQuery({
+export const getMemoriesByIds = internalAction({
   args: {
     memoryIds: v.array(v.id("memories")),
   },
@@ -190,7 +190,7 @@ export const getMemoriesByIds = internalQuery({
  * When category is specified, uses the by_workspace_and_category index
  * for efficient filtering. Otherwise uses by_scope_and_id.
  */
-export const getMemoriesByScope = internalQuery({
+export const getMemoriesByScope = internalAction({
   args: {
     workspaceId: v.id("workspaces"),
     scope: v.string(),
@@ -237,7 +237,7 @@ export const getMemoriesByScope = internalQuery({
 /**
  * Retrieves memories by workspace and category.
  */
-export const getMemoriesByCategory = internalQuery({
+export const getMemoriesByCategory = internalAction({
   args: {
     workspaceId: v.id("workspaces"),
     category: v.string(),
