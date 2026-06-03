@@ -69,6 +69,14 @@ export const workflowQuery = query({
 export const workflowVersionsQuery = query({
   args: { workflowId: v.id("workflows") },
   handler: async (ctx, args) => {
+    const workflow = await ctx.db.get(args.workflowId);
+    if (!workflow) {
+      return [];
+    }
+
+    // Authorize workspace access
+    await requireWorkspaceAccess(ctx, workflow.workspaceId);
+
     const versions = await ctx.db
       .query("workflowVersions")
       .withIndex("by_workflow", (q) => q.eq("workflowId", args.workflowId))
