@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { query } from "../_generated/server";
+import { requireWorkspaceAccess } from "../lib/auth";
 
 /**
  * Real-time query for operators in a workspace
@@ -7,9 +8,12 @@ import { query } from "../_generated/server";
 export const operatorsQuery = query({
   args: { workspaceId: v.id("workspaces") },
   handler: async (ctx, args) => {
+    // Authorize workspace access
+    await requireWorkspaceAccess(ctx, args.workspaceId);
+
     const operators = await ctx.db
       .query("operators")
-      .withIndex("by_workspace", args.workspaceId)
+      .withIndex("by_workspace", (q) => q.eq("workspaceId", args.workspaceId))
       .collect();
 
     return operators;
@@ -27,10 +31,13 @@ export const operatorQuery = query({
       return null;
     }
 
+    // Authorize workspace access
+    await requireWorkspaceAccess(ctx, operator.workspaceId);
+
     // Enrich with execution count
     const executions = await ctx.db
       .query("executions")
-      .withIndex("by_operator", args.operatorId)
+      .withIndex("by_operator", (q) => q.eq("operatorId", args.operatorId))
       .collect();
 
     return {
@@ -49,10 +56,13 @@ export const operatorsByStatusQuery = query({
     status: v.string(),
   },
   handler: async (ctx, args) => {
+    // Authorize workspace access
+    await requireWorkspaceAccess(ctx, args.workspaceId);
+
     const operators = await ctx.db
       .query("operators")
-      .withIndex("by_workspace", args.workspaceId)
-      .filter((op) => op.status === args.status)
+      .withIndex("by_workspace", (q) => q.eq("workspaceId", args.workspaceId))
+      .filter((q) => q.eq(q.field("status"), args.status))
       .collect();
 
     return operators;

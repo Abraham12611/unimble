@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { query } from "../_generated/server";
+import { requireWorkspaceAccess } from "../lib/auth";
 
 /**
  * Real-time query for workflows in a workspace
@@ -7,9 +8,12 @@ import { query } from "../_generated/server";
 export const workflowsQuery = query({
   args: { workspaceId: v.id("workspaces") },
   handler: async (ctx, args) => {
+    // Authorize workspace access
+    await requireWorkspaceAccess(ctx, args.workspaceId);
+
     const workflows = await ctx.db
       .query("workflows")
-      .withIndex("by_workspace", args.workspaceId)
+      .withIndex("by_workspace", (q) => q.eq("workspaceId", args.workspaceId))
       .collect();
 
     // Enrich with execution counts
@@ -17,7 +21,7 @@ export const workflowsQuery = query({
       workflows.map(async (workflow) => {
         const executions = await ctx.db
           .query("executions")
-          .withIndex("by_workflow", workflow._id)
+          .withIndex("by_workflow", (q) => q.eq("workflowId", workflow._id))
           .collect();
 
         return {
@@ -42,13 +46,15 @@ export const workflowQuery = query({
       return null;
     }
 
+    // Authorize workspace access
+    await requireWorkspaceAccess(ctx, workflow.workspaceId);
+
     // Get recent executions
     const recentExecutions = await ctx.db
       .query("executions")
-      .withIndex("by_workflow", args.workflowId)
+      .withIndex("by_workflow", (q) => q.eq("workflowId", args.workflowId))
       .order("desc")
-      .take(10)
-      .collect();
+      .take(10);
 
     return {
       ...workflow,
@@ -65,7 +71,7 @@ export const workflowVersionsQuery = query({
   handler: async (ctx, args) => {
     const versions = await ctx.db
       .query("workflowVersions")
-      .withIndex("by_workflow", args.workflowId)
+      .withIndex("by_workflow", (q) => q.eq("workflowId", args.workflowId))
       .order("desc")
       .collect();
 
@@ -82,10 +88,13 @@ export const workflowsByStatusQuery = query({
     status: v.string(),
   },
   handler: async (ctx, args) => {
+    // Authorize workspace access
+    await requireWorkspaceAccess(ctx, args.workspaceId);
+
     const workflows = await ctx.db
       .query("workflows")
-      .withIndex("by_workspace", args.workspaceId)
-      .filter((wf) => wf.status === args.status)
+      .withIndex("by_workspace", (q) => q.eq("workspaceId", args.workspaceId))
+      .filter((q) => q.eq(q.field("status"), args.status))
       .collect();
 
     return workflows;

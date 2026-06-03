@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { query } from "../_generated/server";
+import { requireWorkspaceAccess } from "../lib/auth";
 
 /**
  * Real-time query for executions in a workspace
@@ -7,12 +8,14 @@ import { query } from "../_generated/server";
 export const executionsQuery = query({
   args: { workspaceId: v.id("workspaces") },
   handler: async (ctx, args) => {
+    // Authorize workspace access
+    await requireWorkspaceAccess(ctx, args.workspaceId);
+
     const executions = await ctx.db
       .query("executions")
-      .withIndex("by_workspace", args.workspaceId)
+      .withIndex("by_workspace", (q) => q.eq("workspaceId", args.workspaceId))
       .order("desc")
-      .take(50)
-      .collect();
+      .take(50);
 
     // Enrich with workflow and operator details
     const enrichedExecutions = await Promise.all(
@@ -43,12 +46,15 @@ export const executionQuery = query({
       return null;
     }
 
+    // Authorize workspace access
+    await requireWorkspaceAccess(ctx, execution.workspaceId);
+
     // Get related data
     const workflow = await ctx.db.get(execution.workflowId);
     const operator = await ctx.db.get(execution.operatorId);
     const steps = await ctx.db
       .query("executionSteps")
-      .withIndex("by_execution", args.executionId)
+      .withIndex("by_execution", (q) => q.eq("executionId", args.executionId))
       .order("asc")
       .collect();
 
@@ -67,9 +73,17 @@ export const executionQuery = query({
 export const executionStepsQuery = query({
   args: { executionId: v.id("executions") },
   handler: async (ctx, args) => {
+    const execution = await ctx.db.get(args.executionId);
+    if (!execution) {
+      return [];
+    }
+
+    // Authorize workspace access
+    await requireWorkspaceAccess(ctx, execution.workspaceId);
+
     const steps = await ctx.db
       .query("executionSteps")
-      .withIndex("by_execution", args.executionId)
+      .withIndex("by_execution", (q) => q.eq("executionId", args.executionId))
       .order("asc")
       .collect();
 
@@ -86,13 +100,15 @@ export const executionsByStatusQuery = query({
     status: v.string(),
   },
   handler: async (ctx, args) => {
+    // Authorize workspace access
+    await requireWorkspaceAccess(ctx, args.workspaceId);
+
     const executions = await ctx.db
       .query("executions")
-      .withIndex("by_workspace", args.workspaceId)
-      .filter((ex) => ex.status === args.status)
+      .withIndex("by_workspace", (q) => q.eq("workspaceId", args.workspaceId))
+      .filter((q) => q.eq(q.field("status"), args.status))
       .order("desc")
-      .take(50)
-      .collect();
+      .take(50);
 
     return executions;
   },
@@ -112,37 +128,34 @@ export const pendingApprovalsQuery = query({
     // Get user's workspaces
     const memberships = await ctx.db
       .query("workspaceMembers")
-      .withIndex("by_user", userId)
+      .withIndex("by_user", (q) => q.eq("userId", userId))
       .collect();
 
     const workspaceIds = memberships.map((m) => m.workspaceId);
 
-    // Get executions in user's workspaces that need approval
-    const executions = await ctx.db
-      .query("executions")
-      .collect()
-      .then((exs) =>
-        exs.filter(
-          (ex) => workspaceIds.includes(ex.workspaceId) && ex.status === "awaiting_approval"
-        )
-      );
+    // Get all pending approvals once (more efficient)
+    const allPendingApprovals = await ctx.db
+      .query("approvals")
+      .withIndex("by_status", (q) => q.eq("status", "pending"))
+      .collect();
 
-    // Get approvals for these executions
-    const approvalPromises = executions.map(async (execution) => {
-      const approvals = await ctx.db
-        .query("approvals")
-        .withIndex("by_execution", execution._id)
-        .collect();
+    // Get executions for these approvals
+    const executionIds = [...new Set(allPendingApprovals.map((a) => a.executionId))];
+    const executions = await Promise.all(executionIds.map((id) => ctx.db.get(id)));
 
-      return {
-        execution,
-        approvals: approvals.filter((a) => a.status === "pending"),
-      };
-    });
+    // Filter executions to user's workspaces and check for pending approvals
+    const results = executions
+      .filter(Boolean)
+      .filter((execution) => workspaceIds.includes(execution.workspaceId))
+      .map((execution) => {
+        const approvals = allPendingApprovals.filter((a) => a.executionId === execution._id);
+        return {
+          execution,
+          approvals,
+        };
+      })
+      .filter((r) => r.approvals.length > 0);
 
-    const results = await Promise.all(approvalPromises);
-
-    // Filter to only show executions with pending approvals
-    return results.filter((r) => r.approvals.length > 0);
+    return results;
   },
 });

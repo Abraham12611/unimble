@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { query } from "../_generated/server";
+import { requireWorkspaceAccess } from "../lib/auth";
 
 /**
  * Real-time query for workspace updates
@@ -8,15 +9,13 @@ import { query } from "../_generated/server";
 export const workspaceQuery = query({
   args: { workspaceId: v.id("workspaces") },
   handler: async (ctx, args) => {
-    const workspace = await ctx.db.get(args.workspaceId);
-    if (!workspace) {
-      return null;
-    }
+    // Authorize workspace access
+    const { workspace } = await requireWorkspaceAccess(ctx, args.workspaceId);
 
     // Enrich with member count
     const members = await ctx.db
       .query("workspaceMembers")
-      .withIndex("by_workspace", args.workspaceId)
+      .withIndex("by_workspace", (q) => q.eq("workspaceId", args.workspaceId))
       .collect();
 
     return {
@@ -39,7 +38,7 @@ export const userWorkspacesQuery = query({
 
     const memberships = await ctx.db
       .query("workspaceMembers")
-      .withIndex("by_user", userId)
+      .withIndex("by_user", (q) => q.eq("userId", userId))
       .collect();
 
     const workspaceIds = memberships.map((m) => m.workspaceId);
@@ -55,9 +54,12 @@ export const userWorkspacesQuery = query({
 export const workspaceMembersQuery = query({
   args: { workspaceId: v.id("workspaces") },
   handler: async (ctx, args) => {
+    // Authorize workspace access
+    await requireWorkspaceAccess(ctx, args.workspaceId);
+
     const members = await ctx.db
       .query("workspaceMembers")
-      .withIndex("by_workspace", args.workspaceId)
+      .withIndex("by_workspace", (q) => q.eq("workspaceId", args.workspaceId))
       .collect();
 
     // Enrich with user details
