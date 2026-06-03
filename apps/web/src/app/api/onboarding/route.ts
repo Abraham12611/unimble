@@ -10,13 +10,31 @@ type CompanySize = "1-10" | "11-50" | "51-200" | "201-500" | "500+";
 
 type UseCase = "DevRel" | "Content" | "GTM" | "Community" | "Other";
 
+type OnboardingRole = "founder" | "marketing" | "content" | "engineering";
+
+type IntegrationConnection = {
+  service: string;
+  connected: boolean;
+};
+
+type OperatorTemplate =
+  | "content_writer"
+  | "community_moderator"
+  | "growth_experiment_runner"
+  | "documentation_agent"
+  | "social_media_scheduler"
+  | "launch_coordinator";
+
 type OnboardingPayload = {
   fullName: string;
   avatarUrl: string;
+  role: OnboardingRole | "";
   companyName: string;
   companySize: CompanySize;
   useCase: UseCase;
   workspaceName: string;
+  integrations: IntegrationConnection[];
+  operatorTemplates: OperatorTemplate[];
   inviteEmails: string;
 };
 
@@ -67,10 +85,18 @@ export async function POST(req: Request) {
 
   const validCompanySizes: CompanySize[] = ["1-10", "11-50", "51-200", "201-500", "500+"];
   const validUseCases: UseCase[] = ["DevRel", "Content", "GTM", "Community", "Other"];
+  const validRoles: (OnboardingRole | "")[] = [
+    "",
+    "founder",
+    "marketing",
+    "content",
+    "engineering",
+  ];
 
   const fullName = String(body.fullName ?? "").trim();
   const companyName = String(body.companyName ?? "").trim();
   const workspaceName = String(body.workspaceName ?? "").trim();
+  const role = String(body.role ?? "").trim() as OnboardingRole | "";
   let avatarUrl: string;
   try {
     avatarUrl = parseHttpsUrlOrThrow(body.avatarUrl);
@@ -113,13 +139,23 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid useCase" }, { status: 400 });
   }
 
+  if (!validRoles.includes(role)) {
+    return NextResponse.json({ error: "Invalid role" }, { status: 400 });
+  }
+
+  const integrations = Array.isArray(body.integrations) ? body.integrations : [];
+  const operatorTemplates = Array.isArray(body.operatorTemplates) ? body.operatorTemplates : [];
+
   const payload: OnboardingPayload = {
     fullName,
     avatarUrl,
+    role,
     companyName,
     companySize: body.companySize as CompanySize,
     useCase: body.useCase as UseCase,
     workspaceName,
+    integrations,
+    operatorTemplates,
     inviteEmails: invitesParsed.parts.join("\n"),
   };
 
@@ -170,10 +206,13 @@ export async function POST(req: Request) {
         onboarding: {
           fullName: payload.fullName,
           ...(payload.avatarUrl ? { avatarUrl: payload.avatarUrl } : {}),
+          ...(payload.role ? { role: payload.role } : {}),
           companyName: payload.companyName,
           companySize: payload.companySize,
           useCase: payload.useCase,
           workspaceName: payload.workspaceName,
+          integrations: payload.integrations,
+          operatorTemplates: payload.operatorTemplates,
           inviteEmails: payload.inviteEmails,
           completedAt: new Date().toISOString(),
           workspaceId,

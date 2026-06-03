@@ -1,6 +1,7 @@
 import type { Id } from "./_generated/dataModel";
 import { mutation } from "./_generated/server";
 import { convexValidators } from "./argValidators";
+import { v } from "convex/values";
 import { derivePlatformRole } from "./rbac";
 import { slugify } from "./lib/auth";
 
@@ -37,10 +38,20 @@ export const completeOnboarding = mutation({
   args: {
     fullName: convexValidators.stringField,
     avatarUrl: convexValidators.stringField,
+    role: convexValidators.stringField,
     companyName: convexValidators.stringField,
     companySize: convexValidators.stringField,
     useCase: convexValidators.stringField,
     workspaceName: convexValidators.stringField,
+    integrations: v.array(
+      v.object({
+        service: v.string(),
+        connected: v.boolean(),
+        connectedAccountId: v.optional(v.string()),
+        connecting: v.optional(v.boolean()),
+      })
+    ),
+    operatorTemplates: v.array(v.string()),
     inviteEmails: convexValidators.stringField,
   },
   handler: async (ctx, args) => {
@@ -124,6 +135,9 @@ export const completeOnboarding = mutation({
       inviteEmails: args.inviteEmails,
       completedAt: now,
       ...(avatarUrl ? { avatarUrl } : {}),
+      ...(args.role ? { role: args.role } : {}),
+      integrations: Array.isArray(args.integrations) ? args.integrations : [],
+      operatorTemplates: Array.isArray(args.operatorTemplates) ? args.operatorTemplates : [],
     };
 
     let userId: Id<"users">;

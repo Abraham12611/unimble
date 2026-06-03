@@ -4,6 +4,11 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  '@composio/core@0.6.11':
+    hash: ke5byxqe5nwby5xg3kxtvxiuly
+    path: patches/@composio__core@0.6.11.patch
+
 importers:
 
   .:
@@ -49,7 +54,7 @@ importers:
     dependencies:
       '@composio/core':
         specifier: ^0.6.11
-        version: 0.6.11(ws@8.18.0)(zod@4.3.6)
+        version: 0.6.11(patch_hash=ke5byxqe5nwby5xg3kxtvxiuly)(ws@8.18.0)(zod@4.3.6)
       convex:
         specifier: ^1.34.1
         version: 1.34.1(react@19.2.4)
@@ -87,6 +92,9 @@ importers:
       '@clerk/nextjs':
         specifier: ^7.0.8
         version: 7.0.8(next@16.2.2(@babel/core@7.29.0)(@opentelemetry/api@1.9.1)(@playwright/test@1.59.1)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      '@composio/core':
+        specifier: ^0.6.11
+        version: 0.6.11(patch_hash=ke5byxqe5nwby5xg3kxtvxiuly)(ws@8.18.0)(zod@4.3.6)
       '@phosphor-icons/react':
         specifier: ^2.1.10
         version: 2.1.10(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -4440,7 +4448,7 @@ snapshots:
 
   '@composio/client@0.1.0-alpha.66': {}
 
-  '@composio/core@0.6.11(ws@8.18.0)(zod@4.3.6)':
+  '@composio/core@0.6.11(patch_hash=ke5byxqe5nwby5xg3kxtvxiuly)(ws@8.18.0)(zod@4.3.6)':
     dependencies:
       '@composio/client': 0.1.0-alpha.66
       '@composio/json-schema-to-zod': 0.1.20(zod@4.3.6)
