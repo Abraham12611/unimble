@@ -33,7 +33,10 @@ export async function POST(req: Request) {
     const composio = new Composio({ apiKey });
     const session = await composio.create(userId);
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+    if (!appUrl) {
+      return Response.json({ error: "App URL not configured" }, { status: 500 });
+    }
 
     const connectionRequest = await session.authorize(toolkit, {
       callbackUrl: `${appUrl}/integrations/callback`,
