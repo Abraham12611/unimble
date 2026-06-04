@@ -547,6 +547,29 @@ export const acceptWorkspaceInvite = mutation({
   },
 });
 
+export async function cancelWorkspaceInviteImpl(
+  ctx: MutationCtx,
+  args: { inviteId: Id<"workspaceInvites"> }
+) {
+  const invite = await ctx.db.get(args.inviteId);
+  if (!invite) {
+    throw new Error("Invite not found");
+  }
+
+  // Only workspace owner or admin can cancel invites
+  await requireWorkspaceOwnerOrAdmin(ctx, invite.workspaceId);
+
+  await ctx.db.delete(args.inviteId);
+  return true;
+}
+
+export const cancelWorkspaceInvite = mutation({
+  args: { inviteId: v.id("workspaceInvites") },
+  handler: async (ctx, args) => {
+    return await cancelWorkspaceInviteImpl(ctx, args);
+  },
+});
+
 export async function listWorkspaceMembersImpl(
   ctx: QueryCtx,
   args: { workspaceId: Id<"workspaces"> }
