@@ -6,7 +6,7 @@ export const circuitBreakerValidator = z.object({
   failureCount: z.number(),
   lastFailureTime: z.number(),
   nextRetryTime: z.number(),
-  config: z.record(z.unknown()).optional(),
+  config: z.record(z.string(), z.unknown()).optional(),
 });
 
 export type CircuitBreaker = z.infer<typeof circuitBreakerValidator>;

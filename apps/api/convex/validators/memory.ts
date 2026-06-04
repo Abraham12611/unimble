@@ -2,10 +2,10 @@ import { z } from "zod";
 
 export const memoryValidator = z.object({
   key: z.string(),
-  value: z.record(z.unknown()),
+  value: z.record(z.string(), z.unknown()),
   type: z.string().optional(),
   expiresAt: z.number().optional(),
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
   createdAt: z.number(),
   updatedAt: z.number(),
 });

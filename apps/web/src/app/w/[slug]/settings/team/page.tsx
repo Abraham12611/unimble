@@ -3,9 +3,10 @@
 import { useMemo, useState } from "react";
 import { anyApi } from "convex/server";
 import { useMutation, useQuery } from "convex/react";
-import { UserPlus, Trash, Copy, CheckCircle } from "@phosphor-icons/react";
+import { UserPlus, Trash } from "@phosphor-icons/react";
 import { useWorkspaceContext } from "@/lib/workspace-context";
 import { useCurrentUser } from "@/lib/convexHooks";
+import { InviteActions } from "@/components/invites/invite-actions";
 
 type MemberUser = {
   email: string;
@@ -45,11 +46,6 @@ export default function TeamPage() {
     workspaceId ? { workspaceId } : "skip"
   ) as Invite[] | undefined;
 
-  const pendingInvites = useMemo(
-    () => invites?.filter((i) => i.status === "pending") ?? [],
-    [invites]
-  );
-
   // Determine if the current user can manage team (owner or admin)
   const currentMemberRole = useMemo(() => {
     if (!currentUser || !members) return undefined;
@@ -68,7 +64,6 @@ export default function TeamPage() {
   const [inviting, setInviting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
-  const [copiedInviteId, setCopiedInviteId] = useState<string | null>(null);
 
   async function handleInvite() {
     if (!workspaceId || !inviteEmail.trim()) return;
@@ -237,71 +232,35 @@ export default function TeamPage() {
       </div>
 
       {/* Pending invitations — only show to owners/admins when there are actual pending invites */}
-      {canManageTeam && pendingInvites.length > 0 && (
+      {canManageTeam && invites && invites.length > 0 && (
         <div className="rounded-[14px] border border-[#222222] bg-[#161616]">
           <div className="border-b border-[#222222] px-5 py-3">
             <div className="text-[15px] font-medium text-[#F0F0F0]">
-              Pending Invitations ({pendingInvites.length})
+              Invitations ({invites.length})
             </div>
           </div>
-          <div className="divide-y divide-[#222222]">
-            {pendingInvites.map((invite) => {
-              const inviteLink = `${typeof window !== "undefined" ? window.location.origin : ""}/invite/${workspaceId}`;
-              const isCopied = copiedInviteId === invite._id;
+          <div className="space-y-2 p-2">
+            {invites.map((invite) => {
+              // Get inviter user info - this would need to be enriched from the backend
+              const enrichedInvite = {
+                ...invite,
+                workspaceId: workspaceId!,
+                status: invite.status as "pending" | "accepted" | "expired",
+                invitedBy: {
+                  name: "Team Member", // This would come from the backend
+                  email: "member@unimble.ai", // This would come from the backend
+                },
+              };
 
               return (
-                <div key={invite._id} className="flex items-center justify-between px-5 py-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="text-[13px] text-[#F0F0F0]">{invite.email}</div>
-                    <div className="mt-0.5 text-[12px] text-[#555555]">
-                      Sent {new Date(invite.createdAt).toLocaleDateString()}
-                    </div>
-                    <div className="mt-0.5 text-[11px] text-[#555555]">
-                      Only the invited email can accept this link
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        try {
-                          await navigator.clipboard.writeText(inviteLink);
-                          setCopiedInviteId(invite._id);
-                          setTimeout(() => setCopiedInviteId(null), 2000);
-                        } catch {
-                          // Fallback for environments without Clipboard API
-                          const textarea = document.createElement("textarea");
-                          textarea.value = inviteLink;
-                          textarea.style.position = "fixed";
-                          textarea.style.opacity = "0";
-                          document.body.appendChild(textarea);
-                          textarea.select();
-                          document.execCommand("copy");
-                          document.body.removeChild(textarea);
-                          setCopiedInviteId(invite._id);
-                          setTimeout(() => setCopiedInviteId(null), 2000);
-                        }
-                      }}
-                      title="Copy invite link"
-                      className="flex items-center gap-1 rounded-[6px] border border-[#2A2A2A] bg-[#1C1C1C] px-2 py-1 text-[11px] font-medium text-[#888888] transition-colors hover:bg-[#222222] hover:text-[#F0F0F0]"
-                    >
-                      {isCopied ? (
-                        <>
-                          <CheckCircle size={12} className="text-[#22C55E]" />
-                          <span className="text-[#22C55E]">Copied</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy size={12} />
-                          <span>Copy link</span>
-                        </>
-                      )}
-                    </button>
-                    <span className="rounded-[6px] bg-[rgba(245,158,11,0.12)] px-2 py-0.5 text-[12px] font-medium text-[#F59E0B]">
-                      pending
-                    </span>
-                  </div>
-                </div>
+                <InviteActions
+                  key={invite._id}
+                  invite={enrichedInvite}
+                  onInvitesChange={() => {
+                    // This will trigger a refetch of the invites
+                    // The useQuery hook will automatically update
+                  }}
+                />
               );
             })}
           </div>

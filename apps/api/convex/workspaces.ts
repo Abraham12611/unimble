@@ -13,6 +13,7 @@ import {
   requireWorkspaceOwnerOrAdmin,
   slugify,
 } from "./lib/auth";
+import { sendInviteEmail } from "../lib/email";
 
 async function requireOrganizationAccess(
   ctx: QueryCtx | MutationCtx,
@@ -393,7 +394,7 @@ export async function inviteWorkspaceMemberImpl(
   ctx: MutationCtx,
   args: { workspaceId: Id<"workspaces">; email: string; expiresAt?: number | null }
 ) {
-  const { user } = await requireWorkspaceOwnerOrAdmin(ctx, args.workspaceId);
+  const { user, workspace } = await requireWorkspaceOwnerOrAdmin(ctx, args.workspaceId);
 
   const email = normalizeEmailOrThrow(args.email);
   const now = Date.now();
@@ -428,6 +429,20 @@ export async function inviteWorkspaceMemberImpl(
     expiresAt: args.expiresAt === null ? undefined : (args.expiresAt ?? defaultExpiresAt),
     createdAt: now,
   });
+
+  // Send invitation email
+  try {
+    const inviteUrl = `${process.env.NEXT_PUBLIC_APP_URL}/invite/${args.workspaceId}`;
+    await sendInviteEmail({
+      to: email,
+      workspaceName: workspace.name,
+      inviterName: user.name || user.email,
+      inviteUrl,
+    });
+  } catch (error) {
+    console.error("Failed to send invitation email:", error);
+    // Continue even if email fails - the invite is still created
+  }
 
   return inviteId;
 }
@@ -529,6 +544,29 @@ export const acceptWorkspaceInvite = mutation({
   },
   handler: async (ctx, args) => {
     return await acceptWorkspaceInviteImpl(ctx, args);
+  },
+});
+
+export async function cancelWorkspaceInviteImpl(
+  ctx: MutationCtx,
+  args: { inviteId: Id<"workspaceInvites"> }
+) {
+  const invite = await ctx.db.get(args.inviteId);
+  if (!invite) {
+    throw new Error("Invite not found");
+  }
+
+  // Only workspace owner or admin can cancel invites
+  await requireWorkspaceOwnerOrAdmin(ctx, invite.workspaceId);
+
+  await ctx.db.delete(args.inviteId);
+  return true;
+}
+
+export const cancelWorkspaceInvite = mutation({
+  args: { inviteId: v.id("workspaceInvites") },
+  handler: async (ctx, args) => {
+    return await cancelWorkspaceInviteImpl(ctx, args);
   },
 });
 

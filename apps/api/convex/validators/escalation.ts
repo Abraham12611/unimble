@@ -6,7 +6,7 @@ export const escalationValidator = z.object({
   reason: z.string(),
   escalatedTo: z.string(),
   status: z.enum(["pending", "acknowledged", "resolved"]),
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
   createdAt: z.number(),
   resolvedAt: z.number().optional(),
 });
