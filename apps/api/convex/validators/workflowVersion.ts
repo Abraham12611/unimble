@@ -5,7 +5,7 @@ export const workflowVersionValidator = z.object({
   version: z.number(),
   name: z.string(),
   description: z.string().optional(),
-  config: z.record(z.unknown()),
+  config: z.record(z.string(), z.unknown()),
   createdBy: z.string(),
   createdAt: z.number(),
   isActive: z.boolean(),

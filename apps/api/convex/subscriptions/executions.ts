@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import type { Id } from "../_generated/dataModel";
 import { query } from "../_generated/server";
 import { requireWorkspaceAccess } from "../lib/auth";
 
@@ -21,7 +22,7 @@ export const executionsQuery = query({
     const enrichedExecutions = await Promise.all(
       executions.map(async (execution) => {
         const workflow = await ctx.db.get(execution.workflowId);
-        const operator = await ctx.db.get(execution.operatorId);
+        const operator = execution.operatorId ? await ctx.db.get(execution.operatorId) : null;
 
         return {
           ...execution,
@@ -51,7 +52,7 @@ export const executionQuery = query({
 
     // Get related data
     const workflow = await ctx.db.get(execution.workflowId);
-    const operator = await ctx.db.get(execution.operatorId);
+    const operator = execution.operatorId ? await ctx.db.get(execution.operatorId) : null;
     const steps = await ctx.db
       .query("executionSteps")
       .withIndex("by_execution", (q) => q.eq("executionId", args.executionId))
@@ -120,7 +121,8 @@ export const executionsByStatusQuery = query({
 export const pendingApprovalsQuery = query({
   args: {},
   handler: async (ctx) => {
-    const userId = ctx.auth.getUserId();
+    const identity = await ctx.auth.getUserIdentity();
+    const userId = identity?.subject as Id<"users">;
     if (!userId) {
       return [];
     }
@@ -146,9 +148,9 @@ export const pendingApprovalsQuery = query({
     // Filter executions to user's workspaces and check for pending approvals
     const results = executions
       .filter(Boolean)
-      .filter((execution) => workspaceIds.includes(execution.workspaceId))
+      .filter((execution) => execution && workspaceIds.includes(execution.workspaceId))
       .map((execution) => {
-        const approvals = allPendingApprovals.filter((a) => a.executionId === execution._id);
+        const approvals = allPendingApprovals.filter((a) => a.executionId === execution?._id);
         return {
           execution,
           approvals,

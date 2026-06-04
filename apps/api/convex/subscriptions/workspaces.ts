@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import type { Id } from "../_generated/dataModel";
 import { query } from "../_generated/server";
 import { requireWorkspaceAccess } from "../lib/auth";
 
@@ -31,7 +32,8 @@ export const workspaceQuery = query({
 export const userWorkspacesQuery = query({
   args: {},
   handler: async (ctx) => {
-    const userId = ctx.auth.getUserId();
+    const identity = await ctx.auth.getUserIdentity();
+    const userId = identity?.subject as Id<"users">;
     if (!userId) {
       return [];
     }
